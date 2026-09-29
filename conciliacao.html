@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Conciliação de Boletos Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Mrs+Saint+Delafield&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
 <link rel="stylesheet" href="assets/estilo.css">
 </head>
 <body>
@@ -634,7 +634,7 @@ async function initHist(sb){
   H.sb=sb;
   const r=await Sessao.exigirLogin();
   H.sessao=r.session; H.perfil=r.perfil;
-  Layout.montar(r, { ativo:"conciliacao", trilha:["Favoritos","Conciliação de Boletos"], conteudoEl:$("#app") });
+  Layout.montar(r, { ativo:"conciliacao", trilha:["Financeiro","Conciliação de Boletos"], conteudoEl:$("#app") });
   $("#app").hidden=false;
   if(!r.perfil){ H.ready=true; H.err="sem perfil"; renderHist(); $("#semPerfil").hidden=false; return; }
   await carregarHist();

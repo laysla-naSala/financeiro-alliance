@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Meu Painel · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Mrs+Saint+Delafield&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
 <link rel="stylesheet" href="assets/estilo.css">
 </head>
 <body>
@@ -33,7 +33,7 @@
 
   const r = await Sessao.exigirLogin();
   const pag = $("#conteudoPagina");
-  Layout.montar(r, { ativo:"painel", trilha:["Favoritos","Meu Painel"], conteudoEl:pag });
+  Layout.montar(r, { ativo:"painel", trilha:["Financeiro","Meu Painel"], conteudoEl:pag });
   pag.hidden = false;
   const nome = r.perfil?.nome || (r.session.user.email||"").split("@")[0];
   $("#ola").textContent = `Olá, ${nome} — recebimentos de boletos da Alliance`;

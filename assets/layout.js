@@ -1,4 +1,4 @@
-// Moldura das páginas internas, no padrão do nSystem: menu lateral escuro + barra com trilha.
+// Moldura das páginas internas, no padrão do Alliance P.O.: menu lateral + barra com trilha.
 // Para incluir um módulo novo, acrescente um item em MENU.
 (function(){
   "use strict";
@@ -14,9 +14,9 @@
   const icone = (n, t) => `<svg width="${t||18}" height="${t||18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[n]||""}</svg>`;
 
   const MENU = [
-    { secao: "Favoritos", itens: [
-      { id: "painel",      nome: "Meu Painel",             href: "painel.html",      icone: "painel",  fav: true },
-      { id: "conciliacao", nome: "Conciliação de Boletos", href: "conciliacao.html", icone: "boletos", fav: true }
+    { secao: "Financeiro", itens: [
+      { id: "painel",      nome: "Meu Painel",             href: "painel.html",      icone: "painel",  },
+      { id: "conciliacao", nome: "Conciliação de Boletos", href: "conciliacao.html", icone: "boletos", }
     ]}
   ];
   const PAPEL = { admin: ["Administração", ""], lanca: ["Lança fechamentos", "lanca"], consulta: ["Só consulta", "consulta"] };
@@ -37,7 +37,7 @@
     shell.className = "shell" + (lerLS("menu-recolhido") === "1" ? " recolhido" : "");
     shell.innerHTML = `
       <aside class="lateral" aria-label="Menu">
-        <div class="lat-topo"><span class="logo">Alliance</span><span class="selo">FINANCEIRO</span></div>
+        <div class="lat-topo"><span class="logo">Alliance</span></div>
         <label class="lat-busca" for="buscaMenu">${icone("busca",16)}<input id="buscaMenu" type="search" placeholder="Buscar menu..." autocomplete="off"></label>
         <nav class="lat-nav" id="latNav"></nav>
         <div class="lat-usuario">
@@ -65,8 +65,8 @@
       for(const s of MENU){
         const itens = s.itens.filter(i => !f || i.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes(f));
         if(!itens.length) continue;
-        html += `<div class="lat-sec">${icone("estrela",12)} ${esc(s.secao)}</div>`;
-        html += itens.map(i => `<a class="lat-item${i.id===ativo?" ativo":""}" href="${i.href}"${i.id===ativo?' aria-current="page"':""}>${icone(i.icone)}<span>${esc(i.nome)}</span>${i.fav?`<span class="estrela">${icone("estrela",14)}</span>`:""}</a>`).join("");
+        html += `<div class="lat-sec">${esc(s.secao)}</div>`;
+        html += itens.map(i => `<a class="lat-item${i.id===ativo?" ativo":""}" href="${i.href}"${i.id===ativo?' aria-current="page"':""}>${icone(i.icone)}<span>${esc(i.nome)}</span></a>`).join("");
       }
       nav.innerHTML = html || `<div class="lat-vazio">Nenhum item com esse nome.</div>`;
     }

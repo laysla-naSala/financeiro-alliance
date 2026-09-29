@@ -37,7 +37,7 @@
     shell.className = "shell" + (lerLS("menu-recolhido") === "1" ? " recolhido" : "");
     shell.innerHTML = `
       <aside class="lateral" aria-label="Menu">
-        <div class="lat-topo"><span class="logo">Alliance</span></div>
+        <div class="lat-topo"><a href="painel.html" title="Meu Painel"><img class="logo-img" src="assets/logo-alliance.png" alt="Alliance" width="64" height="46"></a></div>
         <label class="lat-busca" for="buscaMenu">${icone("busca",16)}<input id="buscaMenu" type="search" placeholder="Buscar menu..." autocomplete="off"></label>
         <nav class="lat-nav" id="latNav"></nav>
         <div class="lat-usuario">

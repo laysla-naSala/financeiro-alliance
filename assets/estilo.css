@@ -88,7 +88,8 @@ html,body{margin:0}
 .logo-bloco{display:grid;justify-items:center;gap:2px}
 .logo{font:600 30px/1 var(--f-display);color:var(--logo);letter-spacing:-.01em;display:flex;flex-direction:column;align-items:center;gap:6px}
 .logo svg{display:block}
-.logo-sub{font-size:14px;color:var(--muted)}
+.logo-sub{font-size:15px;color:var(--muted);margin-top:8px}
+.logo-img{display:block;height:auto;max-width:100%}
 .cartao{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:26px}
 .cartao h1{font:700 21px/1.2 var(--f-display);margin:0}
 .cartao .sub{font-size:14px;margin:6px 0 18px}

@@ -7,7 +7,7 @@
 <title>Meu Painel · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929d">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929e">
 <style>
 .novidades{display:grid;gap:10px;background:var(--warn-soft);border:1px solid #5a4418;border-radius:12px;padding:12px 14px}
 .novidades .topo-nov{display:flex;align-items:center;gap:12px;cursor:pointer;background:none;border:0;padding:0;color:var(--ink);text-align:left;width:100%}
@@ -32,9 +32,9 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929d"></script>
-<script src="assets/sessao.js?v=20260929d"></script>
-<script src="assets/layout.js?v=20260929d"></script>
+<script src="assets/config.js?v=20260929e"></script>
+<script src="assets/sessao.js?v=20260929e"></script>
+<script src="assets/layout.js?v=20260929e"></script>
 <script>
 (async function(){
   "use strict";
@@ -123,14 +123,21 @@
   // 2. fechamentos com pendência ou divergência (últimos 30)
   dias.slice(0,30).filter(d=>d.status!=="ok").forEach(d => pend.push({ nivel: d.status==="pend"?"aviso":"alerta", icone:"boletos", href:"conciliacao.html",
     titulo:`Fechamento de boletos com atenção: ${br(d.data)}`, det:`${d.status_texto||d.status} · salvo por ${d.salvo_por_email||"—"}` }));
-  // 2b. bancos não conciliados no Everest (última leitura de cada conta ativa)
-  const [cb, lb] = await Promise.all([ sb.from("contas_bancarias").select("id,banco,apelido,ativa").eq("empresa","alliance").eq("ativa",true),
-                                       sb.from("conciliacao_bancos").select("conta_id,conciliado,conciliado_ate,pendencias,data_leitura").eq("empresa","alliance").order("data_leitura",{ascending:false}).limit(200) ]);
+  // 2b. bancos não conciliados no Everest (última leitura; banco com subcontas, ex. SGPAY, conta como um só)
+  const [cb, lb] = await Promise.all([ sb.from("contas_bancarias").select("id,banco,apelido,ativa,conta_pai").eq("empresa","alliance").eq("ativa",true),
+                                       sb.from("conciliacao_bancos").select("conta_id,conciliado,conciliado_ate,pendencias,data_leitura").eq("empresa","alliance").order("data_leitura",{ascending:false}).limit(300) ]);
   const ultimas = {}; (lb.data||[]).forEach(l => { if(!ultimas[l.conta_id]) ultimas[l.conta_id] = l; });
-  const bancosPend = (cb.data||[]).filter(c => ultimas[c.id] && !ultimas[c.id].conciliado);
+  const contasAt = cb.data || [];
+  const bancosPend = [];
+  for(const c of contasAt.filter(c => !c.conta_pai)){
+    const filhos = contasAt.filter(f => f.conta_pai === c.id);
+    const alvo = filhos.length ? filhos : [c];
+    const lidas = alvo.filter(a => ultimas[a.id]);
+    const pendentes = lidas.filter(a => !ultimas[a.id].conciliado);
+    if(pendentes.length) bancosPend.push(`${c.banco}${filhos.length ? ` (${pendentes.map(a=>a.apelido).join(", ")})` : c.apelido ? ` (${c.apelido})` : ""} · conciliado até ${br(pendentes.map(a=>ultimas[a.id].conciliado_ate).filter(Boolean).sort()[0]) || "—"}`);
+  }
   if(bancosPend.length) pend.push({ nivel:"alerta", icone:"banco", href:"conciliacao-bancaria.html",
-    titulo:`Conciliação bancária: ${bancosPend.length} banco${bancosPend.length>1?"s":""} pendente${bancosPend.length>1?"s":""} no Everest`,
-    det: bancosPend.map(c => `${c.banco}${c.apelido?` (${c.apelido})`:""} · conciliado até ${br(ultimas[c.id].conciliado_ate)||"—"}`).join(" · ") });
+    titulo:`Conciliação bancária: ${bancosPend.length} banco${bancosPend.length>1?"s":""} pendente${bancosPend.length>1?"s":""} no Everest`, det: bancosPend.join(" · ") });
   // 3. envio à contabilidade do mês anterior
   const ant = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1); const compAnt = iso(ant).slice(0,7);
   const envAnt = envios.find(e=>e.competencia===compAnt);

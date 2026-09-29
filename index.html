@@ -6,57 +6,55 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Mrs+Saint+Delafield&display=swap">
 <link rel="stylesheet" href="assets/estilo.css">
 </head>
 <body>
+<div class="login-pag">
+  <div class="logo-bloco"><span class="logo">Alliance</span><span class="logo-sub">Sistema Financeiro</span></div>
 
-<!-- Tela de login -->
-<main id="telaLogin" class="login" hidden>
-  <div>
-    <div class="eyebrow">naSala · Alliance</div>
-    <h1>Financeiro</h1>
-    <div class="sub">Entre com o e-mail e a senha que você recebeu.</div>
-  </div>
-  <form id="formLogin" novalidate>
-    <label for="email">E-mail<input id="email" type="email" autocomplete="username" required></label>
-    <label for="senha">Senha<input id="senha" type="password" autocomplete="current-password" required></label>
-    <button type="submit" class="primary" id="btnEntrar">Entrar</button>
-    <div class="msg" id="msgLogin" role="status"></div>
-    <button type="button" class="linkbtn" id="btnEsqueci">Esqueci a senha</button>
-  </form>
-</main>
+  <!-- Entrar -->
+  <section class="cartao" id="telaLogin" hidden>
+    <h1>Entrar</h1>
+    <p class="sub">Informe suas credenciais para acessar o sistema</p>
+    <form id="formLogin" novalidate>
+      <label class="campo" for="email">E-mail<input id="email" type="email" autocomplete="username" placeholder="seu@email.com" required></label>
+      <div class="campo"><label for="senha">Senha</label>
+        <div class="senha-box"><input id="senha" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          <button type="button" class="olho" data-alvo="senha" aria-label="Mostrar senha"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
+      <button type="submit" class="btn-roxo" id="btnEntrar">Entrar</button>
+      <div class="msg" id="msgLogin" role="status"></div>
+      <button type="button" class="link-sutil" id="btnEsqueci">Esqueci minha senha</button>
+    </form>
+  </section>
 
-<!-- Definir nova senha (link do e-mail de recuperação) -->
-<main id="telaNovaSenha" class="login" hidden>
-  <div><div class="eyebrow">Recuperar acesso</div><h1>Nova senha</h1><div class="sub">Escolha uma senha com pelo menos 8 caracteres.</div></div>
-  <form id="formNovaSenha" novalidate>
-    <label for="nova1">Nova senha<input id="nova1" type="password" autocomplete="new-password" minlength="8" required></label>
-    <label for="nova2">Repita a nova senha<input id="nova2" type="password" autocomplete="new-password" minlength="8" required></label>
-    <button type="submit" class="primary">Salvar nova senha</button>
-    <div class="msg" id="msgNova" role="status"></div>
-  </form>
-</main>
+  <!-- Nova senha (link do e-mail de recuperação) -->
+  <section class="cartao" id="telaNovaSenha" hidden>
+    <h1>Nova senha</h1>
+    <p class="sub">Escolha uma senha com pelo menos 8 caracteres</p>
+    <form id="formNovaSenha" novalidate>
+      <label class="campo" for="nova1">Nova senha<input id="nova1" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="campo" for="nova2">Repita a nova senha<input id="nova2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button type="submit" class="btn-roxo">Salvar nova senha</button>
+      <div class="msg" id="msgNova" role="status"></div>
+    </form>
+  </section>
 
-<!-- Portal (logado) -->
-<div id="telaPortal" hidden>
-  <div class="topo"><a class="marca" href="index.html">Financeiro <span>naSala · Alliance</span></a><div class="usuario" id="usuario"></div></div>
-  <div class="wrap">
-    <header><div><div class="eyebrow">Módulos</div><h1>O que você quer abrir?</h1></div></header>
-    <div class="modulos" id="modulos">
-      <a class="modulo" href="conciliacao.html"><span class="eyebrow">Alliance · Itaú</span><span class="t">Conciliação de Boletos</span><span class="d">Separa o crédito de boletos do extrato por projeto, em mensalidade e produto, e guarda o fechamento de cada dia.</span></a>
-    </div>
-    <p class="note" id="semPerfil" hidden>Seu login funcionou, mas ainda não tem perfil de acesso. Peça à Laysla para liberar.</p>
-  </div>
+  <!-- Logado, mas sem perfil de acesso -->
+  <section class="cartao" id="telaSemPerfil" hidden>
+    <h1>Acesso pendente</h1>
+    <p class="sub">Seu login funcionou, mas ainda não tem perfil de acesso. Peça à Laysla para liberar.</p>
+    <button type="button" class="btn-roxo" id="btnSairSemPerfil">Sair</button>
+  </section>
+
+  <!-- Site sem configuração -->
+  <section class="cartao" id="telaConfig" hidden>
+    <h1>Falta conectar o Supabase</h1>
+    <p class="sub">Preencha a URL e a chave pública do projeto em assets/config.js.</p>
+  </section>
+
+  <div class="rodape">© 2026 Alliance · naSala. Todos os direitos reservados.</div>
 </div>
-
-<!-- Site ainda sem configuração -->
-<main id="telaConfig" class="login" hidden>
-  <div><div class="eyebrow">Configuração</div><h1>Falta conectar o Supabase</h1>
-  <p class="note">Preencha a URL e a chave pública do projeto em <code>assets/config.js</code>.</p></div>
-</main>
-
-<div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/config.js"></script>
@@ -65,7 +63,7 @@
 (function(){
   "use strict";
   const $ = s => document.querySelector(s);
-  const telas = ["telaLogin","telaNovaSenha","telaPortal","telaConfig"];
+  const telas = ["telaLogin","telaNovaSenha","telaSemPerfil","telaConfig"];
   const mostrar = id => telas.forEach(t => $("#"+t).hidden = (t !== id));
   const msg = (el, txt, tipo) => { el.textContent = txt; el.className = "msg" + (tipo ? " " + tipo : ""); };
   // Traduz os erros do Supabase Auth (campo code; status 429 = limite de tentativas)
@@ -81,19 +79,23 @@
   }
   const S = window.Sessao;
 
+  // mostrar/esconder senha
+  document.querySelectorAll(".olho").forEach(b => b.addEventListener("click", () => {
+    const i = document.getElementById(b.dataset.alvo); const ver = i.type === "password";
+    i.type = ver ? "text" : "password"; b.setAttribute("aria-label", ver ? "Esconder senha" : "Mostrar senha");
+  }));
+
   if(!S.configurado || !S.sb){ mostrar("telaConfig"); return; }
   const sb = S.sb;
   let recuperando = false;
 
-  async function abrirPortal(){
+  // Depois do login: volta para a página pedida, ou vai para o Meu Painel
+  async function seguir(){
     const r = await S.perfilAtual();
     if(!r){ mostrar("telaLogin"); return; }
+    if(!r.perfil){ mostrar("telaSemPerfil"); return; }
     const voltar = new URLSearchParams(location.search).get("voltar");
-    if(voltar && /^[a-z0-9_-]+\.html$/i.test(voltar) && r.perfil){ location.replace(voltar); return; }
-    S.barraUsuario($("#usuario"), r);
-    $("#semPerfil").hidden = !!r.perfil;
-    $("#modulos").hidden = !r.perfil;
-    mostrar("telaPortal");
+    location.replace(voltar && /^[a-z0-9_-]+\.html$/i.test(voltar) && voltar !== "index.html" ? voltar : "painel.html");
   }
 
   // Eventos de sessão (sem chamadas ao Supabase dentro do callback, conforme a documentação)
@@ -110,12 +112,12 @@
     $("#btnEntrar").disabled = false;
     if(error){ msg(m, erroAuth(error), "erro"); return; }
     msg(m, ""); $("#senha").value = "";
-    abrirPortal();
+    seguir();
   });
 
   $("#btnEsqueci").addEventListener("click", async () => {
     const email = $("#email").value.trim(), m = $("#msgLogin");
-    if(!email){ msg(m, "Digite seu e-mail acima e clique de novo em Esqueci a senha.", "erro"); return; }
+    if(!email){ msg(m, "Digite seu e-mail acima e clique de novo em Esqueci minha senha.", "erro"); return; }
     const destino = location.origin + location.pathname.replace(/[^/]*$/, "index.html");
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: destino });
     msg(m, error ? erroAuth(error) : "Se este e-mail tiver acesso, você vai receber um link para criar uma nova senha.", error ? "erro" : "ok");
@@ -129,10 +131,12 @@
     const { error } = await sb.auth.updateUser({ password: a });
     if(error){ msg(m, erroAuth(error), "erro"); return; }
     recuperando = false; history.replaceState(null, "", location.pathname);
-    msg(m, "Senha alterada.", "ok"); setTimeout(abrirPortal, 800);
+    msg(m, "Senha alterada.", "ok"); setTimeout(seguir, 800);
   });
 
-  setTimeout(() => { if(!recuperando) abrirPortal(); }, 0);
+  $("#btnSairSemPerfil").addEventListener("click", () => S.sair());
+
+  setTimeout(() => { if(!recuperando) seguir(); }, 0);
 })();
 </script>
 </body>

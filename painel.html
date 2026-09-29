@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Meu Painel · Financeiro Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Mrs+Saint+Delafield&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+</head>
+<body>
+<main id="conteudoPagina" hidden>
+  <div class="titulo-pag"><h1>Meu Painel</h1><div class="sub" id="ola">Carregando…</div></div>
+  <div id="aviso"></div>
+  <div class="cards" id="cards"></div>
+  <section class="lista" id="recentes" hidden></section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js"></script>
+<script src="assets/sessao.js"></script>
+<script src="assets/layout.js"></script>
+<script>
+(async function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const fmt = c => "R$ " + ((+c||0)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const br = iso => iso ? iso.split("-").reverse().join("/") : "";
+  const mesNome = m => { const [y,mm]=m.split("-"); const s=new Date(+y,+mm-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); return s.charAt(0).toUpperCase()+s.slice(1); };
+
+  const r = await Sessao.exigirLogin();
+  const pag = $("#conteudoPagina");
+  Layout.montar(r, { ativo:"painel", trilha:["Favoritos","Meu Painel"], conteudoEl:pag });
+  pag.hidden = false;
+  const nome = r.perfil?.nome || (r.session.user.email||"").split("@")[0];
+  $("#ola").textContent = `Olá, ${nome} — recebimentos de boletos da Alliance`;
+  if(!r.perfil){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Acesso pendente.</b> Peça à Laysla para liberar seu perfil.</span></div>`; return; }
+
+  const { data, error } = await Sessao.sb.from("fechamentos_boletos")
+    .select("data,status,status_texto,pendencias,qtd_boletos,recebido,tarifa,mens_recebido,prod_recebido,extrato_boletos,salvo_por_email,salvo_em")
+    .eq("empresa","alliance").order("data",{ascending:false}).limit(400);
+  if(error){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Não consegui carregar os fechamentos.</b> Recarregue a página.</span></div>`; return; }
+  const dias = data || [];
+  if(!dias.length){
+    $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Nenhum fechamento salvo ainda.</b> Abra a <a href="conciliacao.html">Conciliação de Boletos</a>, confira um dia e clique em Salvar fechamento do dia. Os números aparecem aqui.</span></div>`;
+    return;
+  }
+
+  // mês de referência: o do fechamento mais recente
+  const mes = dias[0].data.slice(0,7), doMes = dias.filter(d => d.data.startsWith(mes));
+  const soma = k => doMes.reduce((a,d)=>a+(+d[k]||0),0);
+  const pend = dias.filter(d => d.status !== "ok");
+  const ult = dias[0];
+  if(ult.status !== "ok") $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Último fechamento (${br(ult.data)}) com atenção:</b> ${esc(ult.status_texto||ult.status)}. Confira na Conciliação de Boletos.</span></div>`;
+
+  $("#cards").innerHTML = [
+    ["Recebido em boletos", fmt(soma("recebido")), `${mesNome(mes)} · ${doMes.length} dia${doMes.length===1?"":"s"} fechado${doMes.length===1?"":"s"}`],
+    ["Mensalidades", fmt(soma("mens_recebido")), mesNome(mes)],
+    ["Venda de produtos", fmt(soma("prod_recebido")), mesNome(mes)],
+    ["Tarifa de cobrança", fmt(soma("tarifa")), `Líquido ${fmt(soma("recebido")-soma("tarifa"))}`]
+  ].map(([rot,val,det]) => `<div class="card-num"><span class="rot">${rot}</span><span class="val">${val}</span><span class="det">${esc(det)}</span></div>`).join("");
+
+  const ic = Layout.icone("boletos");
+  $("#recentes").hidden = false;
+  $("#recentes").innerHTML = `<h2>Fechamentos recentes ${pend.length?`<span class="contador" title="Com pendência ou divergência">${pend.length}</span>`:""}</h2>` +
+    dias.slice(0,12).map(d => {
+      const cor = d.status==="ok"?"ok":d.status==="pend"?"warn":d.status==="semextrato"?"idle":"bad";
+      return `<a class="item-lista" href="conciliacao.html"><span class="ic">${ic}</span><span><div class="t">Fechamento de boletos: ${br(d.data)}</div><div class="d">${d.qtd_boletos} boletos · ${fmt(d.recebido)} recebido · salvo por ${esc(d.salvo_por_email||"—")}</div></span><span class="dir"><span class="pill ${cor}">${esc(d.status_texto||d.status)}</span></span></a>`;
+    }).join("");
+})();
+</script>
+</body>
+</html>

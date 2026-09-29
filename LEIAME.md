@@ -1,6 +1,6 @@
 # Site Financeiro naSala · Alliance
 
-Site com login e senha. Hoje tem o módulo **Conciliação de Boletos** (Alliance · Itaú). A contabilidade entra depois como outro módulo, no mesmo login.
+Site com login e senha, no visual do nSystem. Hoje tem **Meu Painel** e **Conciliação de Boletos** (Alliance · Itaú). Os envios à contabilidade entram depois como outro módulo, no mesmo login.
 
 | Parte | Onde fica |
 |---|---|
@@ -10,8 +10,10 @@ Site com login e senha. Hoje tem o módulo **Conciliação de Boletos** (Allianc
 
 ## Arquivos
 
-- `index.html`: login, recuperação de senha e menu dos módulos
+- `index.html`: login e recuperação de senha (visual no padrão do nSystem); depois do login vai para o Meu Painel
+- `painel.html`: Meu Painel, com os recebimentos de boletos do mês a partir dos fechamentos salvos
 - `conciliacao.html`: conciliação de boletos e histórico de fechamentos
+- `assets/layout.js`: menu lateral e barra do topo das páginas internas. Um módulo novo entra acrescentando um item em `MENU`
 - `assets/config.js`: URL e chave **pública** do Supabase
 - `assets/sessao.js`: sessão e perfil, usados por todas as páginas
 - `assets/estilo.css`: visual

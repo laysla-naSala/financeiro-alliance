@@ -6,12 +6,11 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Conciliação de Boletos Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Mrs+Saint+Delafield&display=swap">
 <link rel="stylesheet" href="assets/estilo.css">
 </head>
 <body>
-<div id="app" hidden>
-<div class="topo"><a class="marca" href="index.html">Financeiro <span>naSala · Alliance</span></a><div class="usuario" id="usuario"></div></div>
+<main id="app" hidden>
 <div class="wrap">
   <p class="note" id="semPerfil" style="color:var(--bad)" hidden>Seu login funcionou, mas ainda não tem perfil de acesso. Peça à Laysla para liberar.</p>
   <header>
@@ -21,7 +20,6 @@
       <div class="sub">Separa o crédito "Boletos recebidos" do extrato por projeto, em mensalidade e produto, com a tarifa de cada um.</div>
     </div>
     <div class="toolbar">
-      <a class="btn" href="index.html" style="text-decoration:none">Voltar aos módulos</a>
       <button id="btnReset" type="button">Começar de novo</button>
     </div>
   </header>
@@ -49,7 +47,7 @@
     <p class="note">No boleto, o campo "seu número" vem como <span class="num">13543.13</span>: <span class="num">13543</span> é o Cód. do formando no SGE e <span class="num">13</span> é a parcela. O projeto é encontrado pelo Cód.</p>
   </section>
 </div>
-</div>
+</main>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -58,6 +56,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/config.js"></script>
 <script src="assets/sessao.js"></script>
+<script src="assets/layout.js"></script>
 <script>
 (function(){
 "use strict";
@@ -635,8 +634,8 @@ async function initHist(sb){
   H.sb=sb;
   const r=await Sessao.exigirLogin();
   H.sessao=r.session; H.perfil=r.perfil;
+  Layout.montar(r, { ativo:"conciliacao", trilha:["Favoritos","Conciliação de Boletos"], conteudoEl:$("#app") });
   $("#app").hidden=false;
-  Sessao.barraUsuario($("#usuario"), r);
   if(!r.perfil){ H.ready=true; H.err="sem perfil"; renderHist(); $("#semPerfil").hidden=false; return; }
   await carregarHist();
 }

@@ -15,9 +15,11 @@
   const icone = (n, t) => `<svg width="${t||18}" height="${t||18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[n]||""}</svg>`;
 
   const MENU = [
+    { secao: "", itens: [
+      { id: "painel",      nome: "Meu Painel",             href: "painel.html",      icone: "painel" }
+    ]},
     { secao: "Financeiro", itens: [
-      { id: "painel",      nome: "Meu Painel",             href: "painel.html",      icone: "painel",  },
-      { id: "conciliacao", nome: "Conciliação de Boletos", href: "conciliacao.html", icone: "boletos", }
+      { id: "conciliacao", nome: "Conciliação de Boletos", href: "conciliacao.html", icone: "boletos" }
     ]},
     { secao: "Contabilidade", itens: [
       { id: "contabilidade", nome: "Envios à Contabilidade", href: "contabilidade.html", icone: "envio" }
@@ -69,7 +71,7 @@
       for(const s of MENU){
         const itens = s.itens.filter(i => !f || i.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes(f));
         if(!itens.length) continue;
-        html += `<div class="lat-sec">${esc(s.secao)}</div>`;
+        if(s.secao) html += `<div class="lat-sec">${esc(s.secao)}</div>`;
         html += itens.map(i => `<a class="lat-item${i.id===ativo?" ativo":""}" href="${i.href}"${i.id===ativo?' aria-current="page"':""}>${icone(i.icone)}<span>${esc(i.nome)}</span></a>`).join("");
       }
       nav.innerHTML = html || `<div class="lat-vazio">Nenhum item com esse nome.</div>`;

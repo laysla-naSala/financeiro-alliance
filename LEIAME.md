@@ -13,12 +13,12 @@ Site com login e senha, no visual do Alliance P.O.. Hoje tem **Meu Painel** e **
 - `index.html`: login e recuperação de senha (visual no padrão do Alliance P.O.); depois do login vai para o Meu Painel
 - `painel.html`: Meu Painel, com os recebimentos de boletos do mês a partir dos fechamentos salvos
 - `conciliacao.html`: conciliação de boletos e histórico de fechamentos
-- `contabilidade.html`: Envios à Contabilidade (módulo em montagem)
+- `contabilidade.html`: Envios à Contabilidade: lê o extrato do Santander (PDF ou OFX), cruza com a planilha de pagamentos, exige os dados por categoria e gera a planilha para a contabilidade
 - `assets/layout.js`: menu lateral e barra do topo das páginas internas. Um módulo novo entra acrescentando um item em `MENU`
 - `assets/config.js`: URL e chave **pública** do Supabase
 - `assets/sessao.js`: sessão e perfil, usados por todas as páginas
 - `assets/estilo.css`: visual
-- `supabase/01_estrutura.sql`: tabelas e regras de acesso (rodar uma vez)
+- `supabase/01_estrutura.sql` e `02_envios_contabilidade.sql`: tabelas e regras de acesso (rodar uma vez, nessa ordem)
 
 ## Configurar o Supabase (uma vez, feito pela Laysla)
 

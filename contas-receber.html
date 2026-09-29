@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Contas a Receber · Financeiro Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929i">
+<style>
+.inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font:14px var(--f-body);width:100%;min-width:0}
+.abas{display:flex;flex-wrap:wrap;gap:6px}
+.abas button{border-radius:999px;padding:6px 14px;font-size:14px}
+.abas button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--ink);font-weight:600}
+.faixas{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+.faixa{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.faixa .r1{font-size:12px;color:var(--muted)} .faixa .r2{font:600 17px var(--f-num)} .faixa .r3{font-size:12px;color:var(--muted)}
+.faixa.critica{border-color:#5a2a2a}
+tr.atraso-60 td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+tr.atraso-30 td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.atraso-1 td:first-child{box-shadow:inset 3px 0 0 #b98a2a}
+tr.pago td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+.dias{font-weight:600}
+.hist{font-size:12px;color:var(--muted);margin-top:3px}
+.acoes-linha{display:flex;gap:4px;flex-wrap:wrap}
+.acoes-linha button{font-size:12px;padding:3px 9px}
+.form-reg{display:grid;gap:10px;margin-top:10px;max-width:640px}
+.form-reg label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.form-reg textarea{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:8px;font:14px var(--f-body);min-height:80px}
+.regua{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:8px}
+.regua label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main id="conteudoPagina" hidden>
+  <header>
+    <div class="titulo-pag"><h1>Contas a Receber</h1><div class="sub">Títulos em aberto, atrasos e cobranças da Alliance</div></div>
+    <div class="toolbar" id="topo"></div>
+  </header>
+
+  <label class="drop" id="drop" tabindex="0" hidden>
+    <input id="fileInput" type="file" multiple accept=".xlsx,.xls,.pdf,.ofx" hidden>
+    <div><strong>Solte aqui o relatório "Manutenção de Títulos a Receber" do Everest</strong> <span class="muted">(.xlsx). Solte também o extrato do Santander (PDF ou OFX) para o site apontar o que já foi pago.</span></div>
+    <div class="small muted">A cada importação, os títulos do Everest são substituídos pelos do arquivo. Cobranças e anotações ficam guardadas.</div>
+  </label>
+  <div class="slots" id="slots"></div>
+  <div id="aviso"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <section class="panel">
+    <div class="status-line"><h2>Carteira</h2><div class="abas" id="abas"></div></div>
+    <div class="faixas" id="faixas"></div>
+    <div class="tbl-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>Vencimento</th><th>Cliente</th><th>NF / título</th><th>Descrição</th><th class="r">Saldo</th><th>Situação</th><th>Gestor</th><th>Última ação</th><th></th></tr></thead>
+      <tbody id="corpo"></tbody>
+    </table></div>
+    <p class="small muted" style="margin:8px 0 0">Faixa: amarela até 30 dias de atraso, laranja até 60, vermelha acima de 60. Verde: pagamento encontrado no extrato (baixa no Everest continua com a Jhulia).</p>
+  </section>
+
+  <section class="panel" id="registro" hidden>
+    <div class="status-line"><h2 id="regTitulo">Registrar ação</h2><button type="button" id="regFechar">Fechar</button></div>
+    <div class="form-reg">
+      <div id="regResumo" class="small muted"></div>
+      <label for="regTipo">O que foi feito<select id="regTipo" class="inp"><option value="contato">Contato com o cliente (telefone, WhatsApp, e-mail)</option><option value="cobranca_cliente">Cobrança enviada ao cliente</option><option value="aviso_gestor">Aviso ao gestor</option><option value="acordo">Acordo / nova data combinada</option><option value="anotacao">Anotação</option></select></label>
+      <label for="regCanal">Canal<select id="regCanal" class="inp"><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option><option value="telefone">Telefone</option><option value="presencial">Presencial</option><option value="">—</option></select></label>
+      <label for="regPara">Para (nome ou contato)<input id="regPara" class="inp"></label>
+      <label for="regMsg">Mensagem / o que foi combinado<textarea id="regMsg"></textarea></label>
+      <label for="regResp">Resposta do cliente<input id="regResp" class="inp"></label>
+      <div class="toolbar"><button type="button" class="primary" id="regSalvar">Salvar no histórico</button></div>
+    </div>
+  </section>
+
+  <section class="panel" id="blocoRegua" hidden>
+    <h2>Régua de cobrança</h2>
+    <p class="note">Dias de atraso em que cada passo é sugerido. A cobrança ao cliente sempre passa pela aprovação da Jhulia antes de sair.</p>
+    <div class="regua">
+      <label for="rLembrete">Lembrete<input id="rLembrete" class="inp" type="number" min="0"></label>
+      <label for="rCobranca">Cobrança<input id="rCobranca" class="inp" type="number" min="0"></label>
+      <label for="rFirme">Cobrança firme<input id="rFirme" class="inp" type="number" min="0"></label>
+      <label for="rEscalar">Escalar ao gestor<input id="rEscalar" class="inp" type="number" min="0"></label>
+    </div>
+    <div class="toolbar" style="margin-top:10px"><button type="button" id="rSalvar">Salvar régua</button></div>
+  </section>
+
+  <section class="panel" id="blocoHist">
+    <h2>Histórico de cobranças e contatos</h2>
+    <div id="historico" style="margin-top:8px"></div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js?v=20260929i"></script>
+<script src="assets/sessao.js?v=20260929i"></script>
+<script src="assets/layout.js?v=20260929i"></script>
+<script>
+(async function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = c => c==null ? "—" : (c<0?"-":"")+"R$ " + (Math.abs(c)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const br = iso => iso ? String(iso).slice(0,10).split("-").reverse().join("/") : "—";
+const norm = s => String(s ?? "").normalize("NFD").replace(/\p{M}/gu,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+const cents = v => { if(v==null||v==="") return 0; if(typeof v==="number") return Math.round(v*100); const t=String(v).replace(/[^\d,.-]/g,""); const n=t.includes(",")?Number(t.replace(/\./g,"").replace(",",".")):Number(t); return isFinite(n)?Math.round(n*100):0; };
+const isoDe = v => { if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,"0")}-${String(v.getDate()).padStart(2,"0")}`; if(typeof v==="number"&&window.XLSX){ const o=XLSX.SSF.parse_date_code(v); if(o) return `${o.y}-${String(o.m).padStart(2,"0")}-${String(o.d).padStart(2,"0")}`; } const m=String(v??"").match(/(\d{2})\/(\d{2})\/(\d{4})/); return m?`${m[3]}-${m[2]}-${m[1]}`:null; };
+const hojeIso = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
+const diasAtraso = venc => venc ? Math.floor((new Date(hojeIso+"T12:00:00") - new Date(venc+"T12:00:00"))/864e5) : 0;
+const quando = t => t ? new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}) : "";
+function toast(m){ const t=$("#toast"); t.textContent=m; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3800); }
+const EMPRESA="alliance";
+const CARTEIRAS = { notas:"Notas emitidas", sgpay:"SGPay (aguardando repasse)", mutuo:"Mútuos", mensalidade:"Mensalidades (SGE)", outros:"Outros" };
+const TIPOS = { contato:"Contato", cobranca_cliente:"Cobrança ao cliente", aviso_gestor:"Aviso ao gestor", acordo:"Acordo", anotacao:"Anotação" };
+
+const r = await Sessao.exigirLogin();
+const pag = $("#conteudoPagina");
+Layout.montar(r, { ativo:"receber", trilha:["Contas a Receber","Contas a Receber"], conteudoEl:pag });
+pag.hidden = false;
+const papel = r.perfil?.papel, pode = papel==="admin"||papel==="lanca", admin = papel==="admin";
+if(!r.perfil){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Acesso pendente.</b> Peça à Laysla para liberar seu perfil.</span></div>`; return; }
+const sb = Sessao.sb;
+const E = { titulos:[], cobrancas:[], contatos:[], regua:{lembrete:3,cobranca:10,firme:30,escalar:45}, aba:"notas", extrato:null, arquivo:null, erro:null };
+
+/* ---------- classificação: o que é cada título ---------- */
+function carteiraDe(t){
+  const d = norm(t.descricao + " " + t.observacao), c = norm(t.cliente);
+  if(/SGPAY/.test(d)) return "sgpay";
+  if(/EMPRESTAD|EMPRESTIMO|MUTUO/.test(d) || /NS EVENTOS|NASALA/.test(c)) return "mutuo";
+  if(/^(RECEITAS )?ALLIANCE$/.test(c)) return "outros";       // lançamento interno sem cliente externo
+  return "notas";
+}
+
+/* ---------- leitura do relatório do Everest ---------- */
+function lerEverest(buf, nome){
+  const wb = XLSX.read(buf,{type:"array",cellDates:true}); const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
+  const H = rows[0]||[]; const col = n => H.findIndex(h => norm(h)===norm(n));
+  const c = { cli:col("Fantasia Cliente"), cliCod:col("Cliente"), tit:col("Título"), serie:col("Série"), parc:col("Parcela"), venc:col("D. Vencimento"), comp:col("D. Competência"), lanc:col("D. Lançamento"), liq:col("D. Liquidação"),
+              orig:col("V. Original"), saldo:col("V. Saldo"), sit:col("Situação"), port:col("Descrição do Portador"), nf:col("N. Fiscal"), obs:col("Observação") };
+  if(c.tit<0||c.venc<0||c.saldo<0) throw new Error("Não achei as colunas Título, D. Vencimento e V. Saldo. Use o relatório \"Manutenção de Títulos a Receber\" do Everest.");
+  const out=[];
+  for(let i=1;i<rows.length;i++){
+    const row=rows[i]; if(row[0]!=="-" || row[1]!=="S") continue;
+    // descrição vem na primeira linha de movimentação (Inclusão do título), logo abaixo do cabeçalho de movimentos
+    let desc=""; const m=rows[i+2]; if(m && m[0]==null && m[19]) desc=String(m[19]).trim();
+    out.push({ empresa:EMPRESA, origem:"everest", titulo:String(row[c.tit]).trim(), serie:String(row[c.serie]??"").trim(), parcela:String(row[c.parc]??"1/1").trim(),
+      cliente:String(row[c.cli]??"").trim(), cliente_cod:String(row[c.cliCod]??"").trim(), nota:c.nf>=0&&row[c.nf]?String(row[c.nf]).trim():null, descricao:desc==="Inclusão do Título"?"":desc,
+      vencimento:isoDe(row[c.venc]), competencia:isoDe(row[c.comp]), lancamento:isoDe(row[c.lanc]), valor_original:cents(row[c.orig]), saldo:cents(row[c.saldo]),
+      situacao:String(row[c.sit]??"").trim(), portador:String(row[c.port]??"").trim(), observacao:c.obs>=0?String(row[c.obs]??"").trim():"" , liquidado: !!row[c.liq] });
+  }
+  if(!out.length) throw new Error("O relatório não tem títulos.");
+  return { arquivo:nome, titulos: out.filter(t=>!t.liquidado && t.saldo>0).map(t=>{ delete t.liquidado; t.carteira=carteiraDe(t); return t; }) };
+}
+
+/* ---------- extrato do Santander (para apontar o que já entrou) ---------- */
+function movimentosDeTexto(linhas){
+  const money=/-?\d{1,3}(?:\.\d{3})*,\d{2}/g, fim=/(-?\d{1,3}(?:\.\d{3})*,\d{2})\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/; const recs=[]; let cur=null;
+  for(const l of linhas){ const m=l.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*(.*)$/); if(m) cur={data:`${m[3]}-${m[2]}-${m[1]}`,txt:m[4]}; else if(cur) cur.txt+=" "+l; else continue;
+    const f=cur.txt.match(fim); if(f){ recs.push({data:cur.data, desc:cur.txt.replace(fim,"").replace(/\s+/g," ").trim(), valor:cents(f[1])}); cur=null; } }
+  return recs;
+}
+async function lerExtrato(file){
+  const ext=(file.name.split(".").pop()||"").toLowerCase(); const buf=await file.arrayBuffer();
+  if(ext==="ofx"){ const txt=new TextDecoder("latin1").decode(buf); const tag=(b,t)=>{ const m=b.match(new RegExp("<"+t+">([^<\\r\\n]*)","i")); return m?m[1].trim():""; };
+    return { arquivo:file.name, recs: txt.split(/<STMTTRN>/i).slice(1).map(b=>{ const d=tag(b,"DTPOSTED"); return {data:`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`, desc:(tag(b,"MEMO")||tag(b,"NAME")).replace(/\s+/g," "), valor:cents(tag(b,"TRNAMT").replace(",","."))}; }) }; }
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise; let texto="";
+  for(let p=1;p<=pdf.numPages;p++){ const tc=await (await pdf.getPage(p)).getTextContent(); let fim=null; for(const it of tc.items){ if(!it.str){ if(it.hasEOL){texto+="\n";fim=null;} continue; } const x=it.transform[4]; if(fim!=null&&x-fim>1.5) texto+=" "; texto+=it.str; fim=x+(it.width||0); if(it.hasEOL){texto+="\n";fim=null;} } texto+="\n"; }
+  const recs=movimentosDeTexto(texto.split("\n").map(s=>s.replace(/\s+/g," ").trim()).filter(Boolean));
+  if(!recs.length) throw new Error("Não encontrei movimentos no extrato.");
+  return { arquivo:file.name, recs };
+}
+// Casa entradas do extrato com títulos: mesmo valor (saldo) e, se possível, nome do cliente no histórico
+function casarExtrato(){
+  if(!E.extrato) return;
+  const entradas=E.extrato.recs.filter(m=>m.valor>0); const usadas=new Set();
+  for(const t of E.titulos){ if(t.baixado_em) continue;
+    const nomeCli=norm(t.cliente).split(" ").filter(w=>w.length>3).slice(0,2);
+    const cands=entradas.map((m,i)=>({m,i})).filter(x=>!usadas.has(x.i) && x.m.valor===t.saldo);
+    const porNome=cands.find(x=>nomeCli.length && nomeCli.every(w=>norm(x.m.desc).includes(w)));
+    const esc=porNome||cands[0]; if(!esc) continue;
+    usadas.add(esc.i); t.baixado_em=esc.m.data; t.baixa_ref=`${br(esc.m.data)} · ${esc.m.desc.slice(0,60)}`; t.baixa_por_nome=!!porNome; }
+}
+
+/* ---------- banco ---------- */
+async function carregar(){
+  const [t,c,k,cf]=await Promise.all([
+    sb.from("titulos_receber").select("*").eq("empresa",EMPRESA).order("vencimento",{ascending:true}).limit(2000),
+    sb.from("cobrancas").select("*").eq("empresa",EMPRESA).order("feito_em",{ascending:false}).limit(1000),
+    sb.from("contatos_cobranca").select("*").eq("empresa",EMPRESA),
+    sb.from("configuracoes").select("chave,valor").eq("empresa",EMPRESA).eq("chave","regua_cobranca").maybeSingle()
+  ]);
+  if(t.error){ $("#aviso").innerHTML=`<div class="aviso-amarelo"><span><b>Não consegui carregar os títulos.</b> Recarregue a página.</span></div>`; return; }
+  E.titulos=t.data||[]; E.cobrancas=c.data||[]; E.contatos=k.data||[]; if(cf.data?.valor) E.regua={...E.regua,...cf.data.valor};
+  render();
+}
+async function importar(){
+  if(!E.arquivo) return;
+  const novos=E.arquivo.titulos; const antigos=E.titulos.filter(x=>x.origem==="everest");
+  // mantém baixa e gestor já anotados no mesmo título
+  for(const n of novos){ const a=antigos.find(x=>x.titulo===n.titulo&&x.parcela===n.parcela); if(a){ n.gestor_email=a.gestor_email||null; n.baixado_em=a.baixado_em||null; n.baixa_ref=a.baixa_ref||null; } n.importado_por_email=r.session.user.email||""; n.importado_em=new Date().toISOString(); }
+  const del = await sb.from("titulos_receber").delete().eq("empresa",EMPRESA).eq("origem","everest");
+  if(del.error){ toast("Não consegui substituir os títulos antigos."); return; }
+  const ins = await sb.from("titulos_receber").insert(novos.map(({baixa_por_nome,...x})=>x));
+  if(ins.error){ toast(/row-level security|permission/i.test(ins.error.message)?"Seu perfil não pode importar títulos.":"Não consegui salvar os títulos."); return; }
+  toast(`${novos.length} títulos importados do Everest`); E.arquivo=null; await carregar();
+}
+async function salvarBaixas(){
+  const comBaixa=E.titulos.filter(t=>t.baixado_em && t._nova);
+  for(const t of comBaixa){ await sb.from("titulos_receber").update({baixado_em:t.baixado_em, baixa_ref:t.baixa_ref}).eq("empresa",EMPRESA).eq("origem",t.origem).eq("titulo",t.titulo).eq("parcela",t.parcela); delete t._nova; }
+  if(comBaixa.length) toast(`${comBaixa.length} pagamento${comBaixa.length>1?"s":""} encontrado${comBaixa.length>1?"s":""} no extrato e anotado${comBaixa.length>1?"s":""}`);
+}
+
+/* ---------- tela ---------- */
+function ultimaAcao(t){ return E.cobrancas.find(c=>c.origem===t.origem&&c.titulo===t.titulo&&(c.parcela||"")===(t.parcela||"")); }
+function passoSugerido(dias){ const g=E.regua; if(dias>=g.escalar) return "Escalar ao gestor"; if(dias>=g.firme) return "Cobrança firme"; if(dias>=g.cobranca) return "Cobrança"; if(dias>=g.lembrete) return "Lembrete"; return ""; }
+function render(){
+  const ab=E.titulos.filter(t=>!t.baixado_em); const venc=ab.filter(t=>diasAtraso(t.vencimento)>0);
+  const soma=a=>a.reduce((x,t)=>x+(+t.saldo||0),0);
+  const cobr=ab.filter(t=>t.carteira==="notas"||t.carteira==="mensalidade"); const cobrV=cobr.filter(t=>diasAtraso(t.vencimento)>0);
+  $("#topo").innerHTML = E.titulos.length ? (cobrV.length?`<span class="pill bad">${cobrV.length} título${cobrV.length>1?"s":""} vencido${cobrV.length>1?"s":""} para cobrar</span>`:`<span class="pill ok">Nada vencido na cobrança</span>`) : `<span class="pill idle">Sem títulos</span>`;
+  const slot=(nome,d,fatos,dica)=>`<div class="slot"><div class="top"><span class="name">${nome}</span>${d?'<span class="pill ok">Lido</span>':'<span class="pill idle">Falta</span>'}</div><div class="file">${d?esc(d.arquivo):dica}</div>${d?`<div class="facts">${fatos}</div>`:""}</div>`;
+  $("#slots").innerHTML = (E.arquivo?slot("Relatório do Everest",E.arquivo,`${E.arquivo.titulos.length} títulos em aberto · <button type="button" id="btnImportar" class="primary" style="font-size:12px;padding:3px 10px">Importar (substitui os atuais)</button>`,""):"") + (E.extrato?slot("Extrato Santander",E.extrato,`${E.extrato.recs.filter(m=>m.valor>0).length} entradas`,""):"");
+  $("#btnImportar")?.addEventListener("click",importar);
+  if(E.erro) $("#aviso").innerHTML=`<div class="aviso-amarelo"><span><b>${esc(E.erro.name)}:</b> ${esc(E.erro.msg)}</span></div>`; else $("#aviso").innerHTML = E.titulos.length ? "" : `<div class="aviso-amarelo"><span><b>Nenhum título importado ainda.</b> Solte o relatório "Manutenção de Títulos a Receber" do Everest para começar. Quando o acesso ao NIG estiver liberado, a leitura passa a ser automática.</span></div>`;
+  $("#cards").innerHTML=[
+    ["Em aberto", fmt(soma(ab)), `${ab.length} títulos · todas as carteiras`],
+    ["Vencido (cobrança)", fmt(soma(cobrV)), `${cobrV.length} de ${cobr.length} títulos de notas e mensalidades`],
+    ["A vencer", fmt(soma(ab.filter(t=>diasAtraso(t.vencimento)<=0))), `${ab.filter(t=>diasAtraso(t.vencimento)<=0).length} títulos`],
+    ["Pagos no extrato", fmt(soma(E.titulos.filter(t=>t.baixado_em))), `${E.titulos.filter(t=>t.baixado_em).length} títulos · falta baixar no Everest`]
+  ].map(([a,b,c])=>`<div class="card-num"><span class="rot">${a}</span><span class="val">${b}</span><span class="det">${esc(c)}</span></div>`).join("");
+  const n=k=>E.titulos.filter(t=>t.carteira===k).length;
+  $("#abas").innerHTML=Object.entries(CARTEIRAS).map(([k,v])=>`<button type="button" data-aba="${k}" class="${E.aba===k?"on":""}">${esc(v)} (${n(k)})</button>`).join("");
+  document.querySelectorAll("[data-aba]").forEach(b=>b.addEventListener("click",()=>{ E.aba=b.dataset.aba; render(); }));
+  const lista=E.titulos.filter(t=>t.carteira===E.aba).sort((a,b)=>String(a.vencimento).localeCompare(String(b.vencimento)));
+  const fx=[["A vencer",t=>diasAtraso(t.vencimento)<=0],["1–30 dias",t=>{const d=diasAtraso(t.vencimento);return d>0&&d<=30}],["31–60 dias",t=>{const d=diasAtraso(t.vencimento);return d>30&&d<=60}],["61–90 dias",t=>{const d=diasAtraso(t.vencimento);return d>60&&d<=90}],["Mais de 90",t=>diasAtraso(t.vencimento)>90]];
+  const abertaAba=lista.filter(t=>!t.baixado_em);
+  $("#faixas").innerHTML=fx.map(([nome,f],i)=>{ const g=abertaAba.filter(f); return `<div class="faixa ${i>=3&&g.length?"critica":""}"><div class="r1">${nome}</div><div class="r2">${fmt(soma(g))}</div><div class="r3">${g.length} título${g.length===1?"":"s"}</div></div>`; }).join("");
+  $("#corpo").innerHTML = lista.map(t=>{
+    const d=diasAtraso(t.vencimento); const cls=t.baixado_em?"pago":d>60?"atraso-60":d>30?"atraso-30":d>0?"atraso-1":"";
+    const sit=t.baixado_em?`<span class="pill ok">Pago no extrato</span><div class="hist">${esc(t.baixa_ref||"")}</div>`:d>0?`<span class="dias" style="color:var(${d>60?"--bad":"--warn"})">${d} dia${d>1?"s":""} de atraso</span>${t.carteira==="notas"||t.carteira==="mensalidade"?`<div class="hist">${esc(passoSugerido(d))}</div>`:""}`:`<span class="muted">vence em ${-d} dia${-d===1?"":"s"}</span>`;
+    const u=ultimaAcao(t); const g=E.contatos.find(c=>c.papel==="gestor"&&c.email===t.gestor_email);
+    return `<tr class="${cls}"><td class="num">${br(t.vencimento)}</td><td><b>${esc(t.cliente)}</b>${t.portador?`<div class="hist">${esc(t.portador)}</div>`:""}</td><td class="num">${t.nota?`NF ${esc(t.nota)}`:""}<div class="hist">${esc(t.serie)} ${esc(t.titulo)} · ${esc(t.parcela)}</div></td><td class="small">${esc(t.descricao||t.observacao||"")}</td><td class="r num">${fmt(t.saldo)}</td><td>${sit}</td><td class="small">${g?esc(g.nome||g.email):(t.gestor_email?esc(t.gestor_email):'<span class="muted">—</span>')}</td><td class="small">${u?`${esc(TIPOS[u.tipo]||u.tipo)}${u.canal?` · ${esc(u.canal)}`:""}<div class="hist">${quando(u.feito_em)} · ${esc(u.feito_por_email||"")}</div>`:'<span class="muted">—</span>'}</td>
+      <td><div class="acoes-linha">${pode?`<button type="button" data-reg="${esc(t.origem)}|${esc(t.titulo)}|${esc(t.parcela)}">Registrar ação</button>`:""}${pode&&admin?`<button type="button" data-gestor="${esc(t.origem)}|${esc(t.titulo)}|${esc(t.parcela)}">Gestor</button>`:""}</div></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">Nenhum título nesta carteira.</td></tr>`;
+  document.querySelectorAll("[data-reg]").forEach(b=>b.addEventListener("click",()=>abrirRegistro(b.dataset.reg)));
+  document.querySelectorAll("[data-gestor]").forEach(b=>b.addEventListener("click",()=>definirGestor(b.dataset.gestor)));
+  if(admin){ $("#blocoRegua").hidden=false; $("#rLembrete").value=E.regua.lembrete; $("#rCobranca").value=E.regua.cobranca; $("#rFirme").value=E.regua.firme; $("#rEscalar").value=E.regua.escalar; }
+  $("#historico").innerHTML = E.cobrancas.length ? `<div class="tbl-wrap"><table><thead><tr><th>Quando</th><th>Título</th><th>Ação</th><th>Canal</th><th>Para</th><th>Mensagem / combinado</th><th>Resposta</th><th>Por</th></tr></thead><tbody>${E.cobrancas.slice(0,60).map(c=>{ const t=E.titulos.find(x=>x.origem===c.origem&&x.titulo===c.titulo&&(x.parcela||"")===(c.parcela||"")); return `<tr><td class="num">${quando(c.feito_em)}</td><td>${t?esc(t.cliente):""}<div class="hist">${esc(c.titulo)} · ${esc(c.parcela||"")}</div></td><td>${esc(TIPOS[c.tipo]||c.tipo)}</td><td>${esc(c.canal||"")}</td><td>${esc(c.para||"")}</td><td class="small">${esc(c.mensagem||"")}</td><td class="small">${esc(c.resposta||"")}</td><td class="small">${esc(c.feito_por_email||"")}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="note">Nenhuma cobrança ou contato registrado ainda. Use "Registrar ação" na linha do título.</p>`;
+}
+let regAtual=null;
+function abrirRegistro(chave){
+  const [o,ti,pa]=chave.split("|"); const t=E.titulos.find(x=>x.origem===o&&x.titulo===ti&&x.parcela===pa); if(!t) return;
+  regAtual=t; $("#registro").hidden=false; $("#regTitulo").textContent=`Registrar ação: ${t.cliente}`;
+  $("#regResumo").textContent=`${t.nota?`NF ${t.nota} · `:""}${t.serie} ${t.titulo} · ${t.parcela} · vencimento ${br(t.vencimento)} · saldo ${fmt(t.saldo)}`;
+  const ct=E.contatos.find(c=>c.papel==="cliente"&&norm(c.chave)===norm(t.cliente)); $("#regPara").value=ct?(ct.nome||"")+(ct.email?` <${ct.email}>`:"")+(ct.telefone?` ${ct.telefone}`:""):"";
+  $("#regMsg").value=""; $("#regResp").value=""; $("#registro").scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("#regFechar").addEventListener("click",()=>{ $("#registro").hidden=true; regAtual=null; });
+$("#regSalvar").addEventListener("click", async ()=>{
+  if(!regAtual) return;
+  const linha={ empresa:EMPRESA, origem:regAtual.origem, titulo:regAtual.titulo, parcela:regAtual.parcela, tipo:$("#regTipo").value, canal:$("#regCanal").value||null, para:$("#regPara").value.trim()||null, mensagem:$("#regMsg").value.trim()||null, resposta:$("#regResp").value.trim()||null, feito_por_email:r.session.user.email||"" };
+  const { error } = await sb.from("cobrancas").insert(linha);
+  if(error){ toast(/row-level security|permission/i.test(error.message)?"Seu perfil não pode registrar cobranças.":"Não consegui salvar."); return; }
+  toast("Registrado no histórico"); $("#registro").hidden=true; regAtual=null; await carregar();
+});
+async function definirGestor(chave){
+  const [o,ti,pa]=chave.split("|"); const t=E.titulos.find(x=>x.origem===o&&x.titulo===ti&&x.parcela===pa); if(!t) return;
+  const gestores=E.contatos.filter(c=>c.papel==="gestor");
+  const atual=t.gestor_email||"";
+  const escolha=window.prompt(`Gestor que acompanha ${t.cliente}.\nDigite o e-mail do gestor${gestores.length?` (cadastrados: ${gestores.map(g=>g.email).join(", ")})`:""}:`, atual);
+  if(escolha===null) return;
+  const { error } = await sb.from("titulos_receber").update({gestor_email:escolha.trim()||null}).eq("empresa",EMPRESA).eq("origem",o).eq("titulo",ti).eq("parcela",pa);
+  if(error){ toast("Não consegui salvar o gestor."); return; }
+  if(escolha.trim() && !gestores.some(g=>g.email===escolha.trim())) await sb.from("contatos_cobranca").upsert({ empresa:EMPRESA, chave:"gestor:"+escolha.trim(), email:escolha.trim(), papel:"gestor" },{onConflict:"empresa,chave"});
+  toast("Gestor definido"); await carregar();
+}
+$("#rSalvar").addEventListener("click", async ()=>{
+  const v={lembrete:+$("#rLembrete").value, cobranca:+$("#rCobranca").value, firme:+$("#rFirme").value, escalar:+$("#rEscalar").value};
+  if(!(v.lembrete<=v.cobranca && v.cobranca<=v.firme && v.firme<=v.escalar)){ toast("Os dias precisam ser crescentes: lembrete ≤ cobrança ≤ firme ≤ escalar."); return; }
+  const { error } = await sb.from("configuracoes").upsert({ empresa:EMPRESA, chave:"regua_cobranca", valor:v },{onConflict:"empresa,chave"});
+  if(error){ toast("Não consegui salvar a régua."); return; } E.regua=v; toast("Régua salva"); render();
+});
+
+/* ---------- arquivos ---------- */
+async function ingerir(files){
+  for(const f of files){
+    const ext=(f.name.split(".").pop()||"").toLowerCase();
+    try{
+      if(ext==="xlsx"||ext==="xls"){ E.arquivo=lerEverest(await f.arrayBuffer(), f.name); E.erro=null; }
+      else if(ext==="pdf"||ext==="ofx"){ E.extrato=await lerExtrato(f); E.erro=null; E.titulos.forEach(t=>{ if(!t.baixado_em) t._nova=true; }); casarExtrato(); E.titulos.forEach(t=>{ if(!t.baixado_em) delete t._nova; }); await salvarBaixas(); }
+      else throw new Error("Use o .xlsx do Everest ou o extrato em PDF/OFX.");
+    }catch(e){ E.erro={name:f.name,msg:e.message||String(e)}; }
+  }
+  render();
+}
+if(pode){
+  const drop=$("#drop"), input=$("#fileInput"); drop.hidden=false;
+  drop.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); } });
+  input.addEventListener("change",()=>{ ingerir([...input.files]); input.value=""; });
+  ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+  drop.addEventListener("drop",e=>ingerir([...e.dataTransfer.files]));
+}
+window.__cr={E, lerEverest, ingerir, importar, render};
+await carregar();
+})();
+</script>
+</body>
+</html>

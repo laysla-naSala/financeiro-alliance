@@ -15,12 +15,13 @@ Site com login e senha, no visual do Alliance P.O.. Hoje tem **Meu Painel** e **
 - `conciliacao.html`: conciliação de boletos e histórico de fechamentos
 - `conciliacao-bancaria.html`: Conciliação Bancária: bancos ativos (a Laysla cadastra e desativa), situação de conciliação lida do Everest pelo n8n e alerta de segunda às 18h
 - `rendimentos.html`: Rendimentos: lê os relatórios da Vermont e do ContaMax (PDF), com conferência antes de salvar; gráfico mês × CDI, histórico por ano e alertas
+- `contas-receber.html`: Contas a Receber: importa o relatório "Manutenção de Títulos a Receber" do Everest, separa por carteira (notas, SGPay, mútuos, mensalidades), aponta pagamentos no extrato, registra cobranças e contatos, régua de cobrança
 - `contabilidade.html`: Envios à Contabilidade: lê o extrato do Santander (PDF ou OFX), cruza com a planilha de pagamentos, exige os dados por categoria e gera a planilha para a contabilidade
 - `assets/layout.js`: menu lateral e barra do topo das páginas internas. Um módulo novo entra acrescentando um item em `MENU`
 - `assets/config.js`: URL e chave **pública** do Supabase
 - `assets/sessao.js`: sessão e perfil, usados por todas as páginas
 - `assets/estilo.css`: visual
-- `supabase/01_estrutura.sql`, `02_envios_contabilidade.sql` e `03_conciliacao_bancaria.sql` e `04_subcontas.sql`, `05_documentos.sql`, `06_rendimentos.sql`: tabelas e regras de acesso (rodar uma vez, nessa ordem)
+- `supabase/01_estrutura.sql`, `02_envios_contabilidade.sql` e `03_conciliacao_bancaria.sql` e `04_subcontas.sql`, `05_documentos.sql`, `06_rendimentos.sql`, `07_contas_receber.sql`: tabelas e regras de acesso (rodar uma vez, nessa ordem)
 
 ## Configurar o Supabase (uma vez, feito pela Laysla)
 

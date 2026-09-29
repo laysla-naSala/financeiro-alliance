@@ -7,7 +7,7 @@
 <title>Meu Painel · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929h">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929i">
 <style>
 .novidades{display:grid;gap:10px;background:var(--warn-soft);border:1px solid #5a4418;border-radius:12px;padding:12px 14px}
 .novidades .topo-nov{display:flex;align-items:center;gap:12px;cursor:pointer;background:none;border:0;padding:0;color:var(--ink);text-align:left;width:100%}
@@ -32,9 +32,9 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929h"></script>
-<script src="assets/sessao.js?v=20260929h"></script>
-<script src="assets/layout.js?v=20260929h"></script>
+<script src="assets/config.js?v=20260929i"></script>
+<script src="assets/sessao.js?v=20260929i"></script>
+<script src="assets/layout.js?v=20260929i"></script>
 <script>
 (async function(){
   "use strict";
@@ -152,6 +152,18 @@
     if(pc!=null && pc<minCdi) pend.push({ nivel:"aviso", icone:"grafico", href:"rendimentos.html", titulo:`Rendimentos: Vermont rendeu ${pc.toFixed(1).replace(".",",")}% do CDI em ${mesNome(uv.competencia)}`, det:`Abaixo do mínimo de ${minCdi}% do CDI` }); }
   const zer = cmx.filter(d=>(+d.rendimento||0)===0 && (+d.saldo_fim||0)>0);
   if(zer.length) pend.push({ nivel:"alerta", icone:"grafico", href:"rendimentos.html", titulo:`ContaMax do Santander sem rendimento`, det:`${zer.map(d=>mesNome(d.competencia)).join(", ")} · saldo aplicado e R$ 0,00 de rendimento` });
+  // 2d. contas a receber: títulos de notas/mensalidades vencidos e ainda sem pagamento no extrato
+  const tr = await sb.from("titulos_receber").select("cliente,vencimento,saldo,carteira,baixado_em").eq("empresa","alliance").in("carteira",["notas","mensalidade"]).is("baixado_em",null).limit(2000);
+  const hojeStr = iso(hoje);
+  const vencidosCR = (tr.data||[]).filter(t => t.vencimento && t.vencimento < hojeStr);
+  if(vencidosCR.length){
+    const total = vencidosCR.reduce((a,t)=>a+(+t.saldo||0),0);
+    const maisAntigo = vencidosCR.map(t=>t.vencimento).sort()[0];
+    const dias = Math.floor((new Date(hojeStr+"T12:00:00")-new Date(maisAntigo+"T12:00:00"))/864e5);
+    pend.push({ nivel: dias>30?"alerta":"aviso", icone:"receber", href:"contas-receber.html",
+      titulo:`Contas a receber: ${vencidosCR.length} título${vencidosCR.length>1?"s":""} vencido${vencidosCR.length>1?"s":""} · ${fmt(total)}`,
+      det:`Mais antigo há ${dias} dia${dias===1?"":"s"} (${br(maisAntigo)}) · ${[...new Set(vencidosCR.map(t=>t.cliente))].slice(0,4).join(", ")}${new Set(vencidosCR.map(t=>t.cliente)).size>4?"…":""}` });
+  }
   // 3. envio à contabilidade do mês anterior
   const ant = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1); const compAnt = iso(ant).slice(0,7);
   const envAnt = envios.find(e=>e.competencia===compAnt);

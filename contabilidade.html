@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Envios à Contabilidade · Financeiro Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+</head>
+<body>
+<main id="conteudoPagina" hidden>
+  <div class="titulo-pag"><h1>Envios à Contabilidade</h1><div class="sub">Documentos que a Alliance envia para o escritório de contabilidade</div></div>
+  <div class="aviso-amarelo"><span><b>Módulo em montagem.</b> Aqui vão ficar os envios para a contabilidade: o que foi enviado, de qual mês, quando e por quem.</span></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js"></script>
+<script src="assets/sessao.js"></script>
+<script src="assets/layout.js"></script>
+<script>
+(async function(){
+  "use strict";
+  const r = await Sessao.exigirLogin();
+  const pag = document.querySelector("#conteudoPagina");
+  Layout.montar(r, { ativo:"contabilidade", trilha:["Contabilidade","Envios à Contabilidade"], conteudoEl:pag });
+  pag.hidden = false;
+})();
+</script>
+</body>
+</html>

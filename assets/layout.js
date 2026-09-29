@@ -9,7 +9,8 @@
     menu:    '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>',
     sair:    '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
     estrela: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z" fill="currentColor"/>',
-    seta:    '<path d="m9 18 6-6-6-6"/>'
+    seta:    '<path d="m9 18 6-6-6-6"/>',
+    envio:   '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>'
   };
   const icone = (n, t) => `<svg width="${t||18}" height="${t||18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[n]||""}</svg>`;
 
@@ -17,6 +18,9 @@
     { secao: "Financeiro", itens: [
       { id: "painel",      nome: "Meu Painel",             href: "painel.html",      icone: "painel",  },
       { id: "conciliacao", nome: "Conciliação de Boletos", href: "conciliacao.html", icone: "boletos", }
+    ]},
+    { secao: "Contabilidade", itens: [
+      { id: "contabilidade", nome: "Envios à Contabilidade", href: "contabilidade.html", icone: "envio" }
     ]}
   ];
   const PAPEL = { admin: ["Administração", ""], lanca: ["Lança fechamentos", "lanca"], consulta: ["Só consulta", "consulta"] };

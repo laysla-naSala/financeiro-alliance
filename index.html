@@ -68,6 +68,17 @@
   const telas = ["telaLogin","telaNovaSenha","telaPortal","telaConfig"];
   const mostrar = id => telas.forEach(t => $("#"+t).hidden = (t !== id));
   const msg = (el, txt, tipo) => { el.textContent = txt; el.className = "msg" + (tipo ? " " + tipo : ""); };
+  // Traduz os erros do Supabase Auth (campo code; status 429 = limite de tentativas)
+  function erroAuth(error){
+    const c = error?.code || "", m = error?.message || "";
+    if(c === "invalid_credentials" || /invalid login/i.test(m)) return "E-mail ou senha incorretos.";
+    if(c === "email_not_confirmed" || /not confirmed/i.test(m)) return "Este e-mail ainda não foi confirmado. Peça à Laysla para confirmar seu cadastro.";
+    if(c === "over_email_send_rate_limit") return "Limite de e-mails atingido. Tente de novo em cerca de 1 hora ou peça à Laysla para trocar sua senha.";
+    if(c === "same_password") return "A nova senha precisa ser diferente da atual.";
+    if(c === "weak_password") return "Senha fraca. Use pelo menos 8 caracteres, misturando letras e números.";
+    if(error?.status === 429 || /rate limit/i.test(m)) return "Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.";
+    return "Não foi possível concluir agora (" + (c || m || "erro desconhecido") + "). Tente de novo em instantes.";
+  }
   const S = window.Sessao;
 
   if(!S.configurado || !S.sb){ mostrar("telaConfig"); return; }
@@ -97,7 +108,7 @@
     $("#btnEntrar").disabled = true; msg(m, "Entrando…");
     const { error } = await sb.auth.signInWithPassword({ email, password: senha });
     $("#btnEntrar").disabled = false;
-    if(error){ msg(m, /invalid/i.test(error.message) ? "E-mail ou senha incorretos." : "Não foi possível entrar agora. Tente de novo em instantes.", "erro"); return; }
+    if(error){ msg(m, erroAuth(error), "erro"); return; }
     msg(m, ""); $("#senha").value = "";
     abrirPortal();
   });
@@ -107,7 +118,7 @@
     if(!email){ msg(m, "Digite seu e-mail acima e clique de novo em Esqueci a senha.", "erro"); return; }
     const destino = location.origin + location.pathname.replace(/[^/]*$/, "index.html");
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: destino });
-    msg(m, error ? "Não foi possível enviar agora. Tente de novo em instantes." : "Se este e-mail tiver acesso, você vai receber um link para criar uma nova senha.", error ? "erro" : "ok");
+    msg(m, error ? erroAuth(error) : "Se este e-mail tiver acesso, você vai receber um link para criar uma nova senha.", error ? "erro" : "ok");
   });
 
   $("#formNovaSenha").addEventListener("submit", async e => {
@@ -116,7 +127,7 @@
     if(a.length < 8){ msg(m, "A senha precisa ter pelo menos 8 caracteres.", "erro"); return; }
     if(a !== b){ msg(m, "As duas senhas não são iguais.", "erro"); return; }
     const { error } = await sb.auth.updateUser({ password: a });
-    if(error){ msg(m, "Não foi possível salvar a senha. Peça um novo link em Esqueci a senha.", "erro"); return; }
+    if(error){ msg(m, erroAuth(error), "erro"); return; }
     recuperando = false; history.replaceState(null, "", location.pathname);
     msg(m, "Senha alterada.", "ok"); setTimeout(abrirPortal, 800);
   });

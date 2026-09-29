@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Conciliação de Boletos Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+</head>
+<body>
+<div id="app" hidden>
+<div class="topo"><a class="marca" href="index.html">Financeiro <span>naSala · Alliance</span></a><div class="usuario" id="usuario"></div></div>
+<div class="wrap">
+  <p class="note" id="semPerfil" style="color:var(--bad)" hidden>Seu login funcionou, mas ainda não tem perfil de acesso. Peça à Laysla para liberar.</p>
+  <header>
+    <div>
+      <div class="eyebrow">Alliance · Itaú ag. 4450 · cc 19440-4</div>
+      <h1>Conciliação de Boletos</h1>
+      <div class="sub">Separa o crédito "Boletos recebidos" do extrato por projeto, em mensalidade e produto, com a tarifa de cada um.</div>
+    </div>
+    <div class="toolbar">
+      <a class="btn" href="index.html" style="text-decoration:none">Voltar aos módulos</a>
+      <button id="btnReset" type="button">Começar de novo</button>
+    </div>
+  </header>
+
+  <label class="drop" id="drop" tabindex="0">
+    <input id="fileInput" type="file" multiple accept=".ret,.RET,.txt,.xlsx,.xls,.pdf" hidden>
+    <div><strong>Solte os arquivos aqui</strong> ou clique para escolher. <span class="muted">Pode soltar todos de uma vez; o site reconhece cada um.</span></div>
+    <div class="small muted">Nada sai do seu computador: os arquivos são lidos no próprio navegador.</div>
+  </label>
+
+  <div class="slots" id="slots"></div>
+
+  <section id="result" class="panel" hidden></section>
+
+  <section id="hist" class="panel"></section>
+
+  <section id="howto" class="panel">
+    <h2>Como usar</h2>
+    <ol class="steps">
+      <li><strong>Retorno do Itaú</strong> (.RET) do dia: traz cada boleto pago, com o código do formando e a tarifa.</li>
+      <li><strong>Dois Contas a Receber do SGE</strong> (.xlsx) exportados pela <em>data de crédito</em> do mesmo dia: um só de <strong>mensalidades</strong> e outro só de <strong>venda de produtos</strong>. É deles que saem o projeto e o tipo de cada boleto. Com "mensalidade" ou "produto" no nome do arquivo, o site reconhece sozinho.</li>
+      <li><strong>Extrato do Itaú</strong> (PDF) que contém a linha "BOLETOS RECEBIDOS" e a "TAR/CUSTAS COBRANCA" do dia.</li>
+      <li>Opcional: <strong>Lista de projetos</strong> do SGE (.xlsx), para mostrar o nome de cada projeto.</li>
+    </ol>
+    <p class="note">No boleto, o campo "seu número" vem como <span class="num">13543.13</span>: <span class="num">13543</span> é o Cód. do formando no SGE e <span class="num">13</span> é a parcela. O projeto é encontrado pelo Cód.</p>
+  </section>
+</div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js"></script>
+<script src="assets/sessao.js"></script>
+<script>
+(function(){
+"use strict";
+/* ---------- utilidades ---------- */
+const $ = s => document.querySelector(s);
+const fmt = c => (c<0?"-":"") + "R$ " + (Math.abs(c)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtN = c => (c/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc = s => String(s??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const norm = s => String(s??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const cents = v => { if(v==null||v==="") return 0; if(typeof v==="number") return Math.round(v*100);
+  const t=String(v).replace(/[^\d,.-]/g,""); if(!t) return 0;
+  const n = t.includes(",") ? Number(t.replace(/\./g,"").replace(",",".")) : Number(t); return isFinite(n)?Math.round(n*100):0; };
+const d6 = s => (/^\d{6}$/.test(s) && s!=="000000") ? `20${s.slice(4,6)}-${s.slice(2,4)}-${s.slice(0,2)}` : "";
+const br = iso => iso ? iso.split("-").reverse().join("/") : "";
+function isoFromCell(v){
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,"0")}-${String(v.getDate()).padStart(2,"0")}`;
+  if(typeof v==="number" && window.XLSX){ const o=XLSX.SSF.parse_date_code(v); if(o) return `${o.y}-${String(o.m).padStart(2,"0")}-${String(o.d).padStart(2,"0")}`; }
+  const m=String(v??"").match(/(\d{2})\/(\d{2})\/(\d{4})/); return m?`${m[3]}-${m[2]}-${m[1]}`:"";
+}
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3200); }
+const store = {
+  get(k,def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } },
+  set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+};
+const CACHE_KEY="conc-boletos-codigo-projeto";
+
+/* ---------- estado ---------- */
+const S = { ret:null, everest:null, evParts:{mens:null,prod:null}, evWait:null, extrato:null, projetos:null, date:"", manual:{}, manualTipo:{}, override:{bol:null,tar:null}, open:new Set() };
+
+/* ---------- leitura do retorno CNAB 400 Itaú (layout oficial "Cobrança Bancária 400 bytes") ---------- */
+const OCC = {"02":"Entrada confirmada","03":"Entrada rejeitada","04":"Alteração de dados","05":"Alteração de dados - baixa","06":"Liquidação normal","07":"Liquidação parcial","08":"Liquidação em cartório","09":"Baixa simples","10":"Baixa por ter sido liquidado","12":"Abatimento concedido","13":"Abatimento cancelado","14":"Vencimento alterado"};
+const LIQ = new Set(["06","07","08"]);
+function parseRet(text, fileName){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length || !lines[0].startsWith("02RETORNO")) throw new Error("Este arquivo não é um retorno de cobrança (a primeira linha deveria começar com 02RETORNO).");
+  const h = lines[0];
+  if(h.slice(76,79)!=="341") throw new Error("Este retorno não é do Itaú (código do banco "+h.slice(76,79)+"). O site lê o layout do Itaú.");
+  const head = { agencia:h.slice(26,30), conta:h.slice(32,37)+"-"+h.slice(37,38), data:d6(h.slice(94,100)), empresa:h.slice(46,76).trim() };
+  const recs=[];
+  for(const l of lines.slice(1)){
+    if(l[0]!=="1") continue;
+    const f=(a,b)=>l.slice(a-1,b), n=(a,b)=>parseInt(f(a,b),10)||0;
+    const seu=f(38,62).trim(); const [cod,parc]=seu.split(".");
+    const occ=f(109,110);
+    const principal=n(254,266), tarifa=n(176,188);
+    const liq=LIQ.has(occ);
+    recs.push({
+      seu, cod:(cod||"").replace(/^0+/,""), parcela:parc||"", nosso:f(63,70), occ, occNome:OCC[occ]||("Ocorrência "+occ),
+      dataOcorr:d6(f(111,116)), venc:d6(f(147,152)), valorTitulo:n(153,165), tarifa,
+      abatimento:n(228,240), desconto:n(241,253), principal, juros:n(267,279), outros:n(280,292),
+      dataCredito:d6(f(296,301)), pagador:f(325,354).trim(),
+      liq, bruto: liq ? principal + tarifa : 0
+    });
+  }
+  if(!recs.length) throw new Error("O retorno não tem nenhum boleto (registros de detalhe).");
+  return { fileName, head, recs };
+}
+
+/* ---------- leitura das planilhas do SGE ---------- */
+function readSheet(buf){
+  const wb = XLSX.read(buf,{type:"array",cellDates:true});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:true});
+}
+function colIndex(header, ...names){
+  const H=header.map(norm);
+  for(const n of names){ const i=H.indexOf(norm(n)); if(i>=0) return i; }
+  return -1;
+}
+function parseSGE(rows, fileName){
+  const h=rows[0]||[];
+  const c={proj:colIndex(h,"Projeto"),cod:colIndex(h,"Cód.","Cod"),nome:colIndex(h,"Nome"),pag:colIndex(h,"Pagador"),
+    valor:colIndex(h,"Valor"),pago:colIndex(h,"Valor Pago"),meio:colIndex(h,"Meio de Pag.","Meio de Pagamento"),
+    conta:colIndex(h,"Conta Destino"),venc:colIndex(h,"Data Vencimento"),dpag:colIndex(h,"Data Pagamento"),dcred:colIndex(h,"Data Crédito")};
+  const falta=["proj","cod","pago","dcred"].filter(k=>c[k]<0);
+  if(falta.length) throw new Error("Não achei as colunas Projeto, Cód., Valor Pago e Data Crédito. Exporte o Contas a Receber do SGE sem mudar as colunas.");
+  const out=[];
+  for(const r of rows.slice(1)){
+    const cod=String(r[c.cod]??"").trim().replace(/\.0+$/,"").replace(/^0+/,""); if(!cod) continue;
+    out.push({ projeto:String(r[c.proj]).trim(), cod, nome:String(r[c.nome]??"").trim(), pagador:String(r[c.pag]??"").trim(),
+      valor:cents(r[c.valor]), pago:cents(r[c.pago]), meio:String(r[c.meio]??"").trim(), conta:String(r[c.conta]??"").trim(),
+      venc:isoFromCell(r[c.venc]), dpag:isoFromCell(r[c.dpag]), dcred:isoFromCell(r[c.dcred]) });
+  }
+  if(!out.length) throw new Error("A planilha do Contas a Receber veio sem linhas.");
+  return { fileName, rows:out };
+}
+function parseProjetos(rows, fileName){
+  const h=rows[0]||[]; const ip=colIndex(h,"Projeto"), id=colIndex(h,"Descrição","Descricao"), ii=colIndex(h,"Instituição","Instituicao");
+  if(ip<0||id<0) throw new Error("Não achei as colunas Projeto e Descrição na lista de projetos.");
+  const map={};
+  for(const r of rows.slice(1)){ const p=String(r[ip]).trim(); if(p) map[p]={desc:String(r[id]).trim(), inst:ii>=0?String(r[ii]).trim():""}; }
+  return { fileName, map, total:Object.keys(map).length };
+}
+
+/* ---------- leitura do extrato PDF do Itaú ---------- */
+async function parseExtrato(buf, fileName){
+  if(!window.pdfjsLib) throw new Error("O leitor de PDF não carregou. Recarregue a página ou digite os valores do extrato no quadro de conferência.");
+  let pdf;
+  try{ pdf = await pdfjsLib.getDocument({data:buf}).promise; }
+  catch(e){ throw new Error("Não consegui abrir este PDF. Baixe o extrato de novo no Itaú ou digite os valores no quadro de conferência."); }
+  const lines=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const tc = await (await pdf.getPage(p)).getTextContent();
+    const rows=[];
+    for(const it of tc.items){ if(!it.str||!it.str.trim()) continue; const y=it.transform[5], x=it.transform[4];
+      let row=rows.find(r=>Math.abs(r.y-y)<2.5); if(!row){row={y,items:[]};rows.push(row);} row.items.push({x,s:it.str}); }
+    rows.sort((a,b)=>b.y-a.y);
+    for(const r of rows) lines.push(r.items.sort((a,b)=>a.x-b.x).map(i=>i.s.trim()).join(" ").replace(/\s+/g," "));
+  }
+  const all=lines.join("\n");
+  const acc=all.match(/Ag[eê]ncia\s*(\d{4})\s*Conta\s*([\d.-]+)/i);
+  const mov=[];
+  const money=/-?\d{1,3}(?:\.\d{3})*,\d{2}/g;
+  for(const l of lines){
+    const m=l.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(.*)$/); if(!m) continue;
+    const rest=m[4]; const vals=[...rest.matchAll(money)]; if(!vals.length) continue;
+    const desc=rest.slice(0,vals[0].index).trim();
+    if(/^SALDO/i.test(desc)) continue;
+    mov.push({ data:`${m[3]}-${m[2]}-${m[1]}`, desc, valor:cents(vals[0][0]) });
+  }
+  if(!mov.length) throw new Error("Não encontrei lançamentos neste PDF. Confira se é o extrato do Itaú (conta corrente) ou digite os valores no quadro de conferência.");
+  return { fileName, conta: acc?`${acc[1]} / ${acc[2]}`:"", mov };
+}
+
+/* ---------- classificação do arquivo solto ---------- */
+const TIPO = {mens:"Mensalidade", prod:"Produto", "":"Sem tipo"};
+function tipoPeloNome(name){
+  const n=norm(name);
+  if(/mensal/.test(n)) return "mens";
+  if(/produt|venda|loja/.test(n)) return "prod";
+  return "";
+}
+function combineEv(){
+  const m=S.evParts.mens, p=S.evParts.prod;
+  const rows=[...(m?m.rows.map(r=>({...r,tipo:"mens"})):[]), ...(p?p.rows.map(r=>({...r,tipo:"prod"})):[])];
+  S.everest = rows.length ? {fileName:[m?.fileName,p?.fileName].filter(Boolean).join(" + "), rows} : null;
+  if(S.everest) learnCodes();
+}
+async function ingest(file){
+  const name=file.name, ext=(name.split(".").pop()||"").toLowerCase();
+  try{
+    if(ext==="pdf"){ S.extrato=await parseExtrato(await file.arrayBuffer(), name); S.errExtrato=null; }
+    else if(ext==="xlsx"||ext==="xls"){
+      if(!window.XLSX) throw new Error("O leitor de Excel não carregou. Recarregue a página.");
+      const rows=readSheet(await file.arrayBuffer()); const H=(rows[0]||[]).map(norm);
+      if(H.includes("valor pago")){
+        const ev=parseSGE(rows,name); S.errPlanilha=null;
+        const t=tipoPeloNome(name) || (S.evParts.mens&&!S.evParts.prod?"prod":!S.evParts.mens&&S.evParts.prod?"mens":"");
+        if(t){ S.evParts[t]=ev; combineEv(); } else S.evWait=ev;
+      }
+      else if(H.includes("meta de adesao")||H.includes("fase")){ S.projetos=parseProjetos(rows,name); S.errProjetos=null; }
+      else throw new Error(`"${name}" não parece nem o Contas a Receber nem a lista de projetos do SGE.`);
+    } else {
+      const txt=new TextDecoder("latin1").decode(await file.arrayBuffer());
+      S.ret=parseRet(txt,name); S.errRet=null; S.date=""; S.override={bol:null,tar:null};
+    }
+  }catch(e){
+    const msg=e.message||String(e);
+    if(ext==="pdf") S.errExtrato={name,msg}; else if(ext==="xlsx"||ext==="xls") S.errPlanilha={name,msg}; else S.errRet={name,msg};
+  }
+}
+async function ingestAll(files){ for(const f of files) await ingest(f); render(); }
+
+/* ---------- mapa Cód. → Projeto (SGE + memória deste navegador) ---------- */
+function learnCodes(){
+  const cache=store.get(CACHE_KEY,{});
+  for(const r of S.everest.rows) if(r.projeto) cache[r.cod]=r.projeto;
+  store.set(CACHE_KEY,cache);
+}
+function projetoDe(cod){
+  if(S.manual[cod]) return {p:S.manual[cod],fonte:"manual"};
+  const r=S.everest?.rows.find(x=>x.cod===cod); if(r) return {p:r.projeto,fonte:"everest"};
+  const cache=store.get(CACHE_KEY,{}); if(cache[cod]) return {p:cache[cod],fonte:"memória"};
+  return {p:"",fonte:""};
+}
+const descDe = p => S.projetos?.map[p]?.desc || "";
+const keyRec = r => r.nosso+"|"+r.occ+"|"+r.seu;
+
+/* ---------- conciliação ---------- */
+function creditDates(){
+  if(!S.ret) return [];
+  const set={}; for(const r of S.ret.recs) if(r.liq&&r.dataCredito) set[r.dataCredito]=(set[r.dataCredito]||0)+1;
+  return Object.keys(set).sort();
+}
+function compute(){
+  const dates=creditDates();
+  if(!S.date || !dates.includes(S.date)) S.date = dates[dates.length-1] || S.ret.head.data;
+  const D=S.date;
+  // boletos deste crédito + tarifas sem crédito do mesmo arquivo
+  const recs=S.ret.recs.filter(r => r.liq ? r.dataCredito===D : r.tarifa>0);
+  const ev=(S.everest?.rows||[]).map((r,i)=>({...r,i}));
+  const used=new Set();
+  const itens=recs.map(r=>{
+    const pj=projetoDe(r.cod), k=keyRec(r), escolha=S.manualTipo[k]||"";
+    let st="", ref=null, tipo="", tipoFonte="", amb=false;
+    if(r.liq && S.everest){
+      const regras=[[x=>x.cod===r.cod && x.pago===r.bruto && x.dcred===D,"ok"],[x=>x.cod===r.cod && x.pago===r.bruto,"data"],[x=>x.cod===r.cod && x.dcred===D,"valor"]];
+      for(const [pred,s] of regras){
+        const cands=ev.filter(x=>!used.has(x.i)&&pred(x)); if(!cands.length) continue;
+        const tiposC=new Set(cands.map(x=>x.tipo));
+        if(tiposC.size>1){ amb=true; ref=cands.find(x=>x.tipo===escolha)||cands[0]; tipo=escolha; tipoFonte=escolha?"manual":""; }
+        else { ref=cands[0]; tipo=ref.tipo; tipoFonte="everest"; }
+        used.add(ref.i); st=s; break;
+      }
+      if(!st) st="ausente";
+    }
+    if(!tipo){
+      const tiposCod=new Set(ev.filter(x=>x.cod===r.cod).map(x=>x.tipo));
+      if(escolha){ tipo=escolha; tipoFonte="manual"; }
+      else if(!amb && tiposCod.size===1){ tipo=[...tiposCod][0]; tipoFonte="cod"; }
+    }
+    if(!pj.p) st="semprojeto";
+    return {...r, projeto:pj.p, fonte:pj.fonte, st, ref, tipo, tipoFonte, amb, k};
+  });
+  // boletos Itaú baixados no SGE para este crédito que não vieram no retorno
+  const sobra = S.everest ? ev.filter(x=>!used.has(x.i) && x.dcred===D && /boleto/i.test(x.meio) && /19440/.test(x.conta)) : [];
+  // agrupamento por projeto e tipo
+  const g={};
+  for(const it of itens){
+    const p=it.projeto||"—", key=p+"|"+it.tipo;
+    const o=g[key]||(g[key]={key,projeto:p,tipo:it.tipo,qtd:0,bruto:0,tarifa:0,itens:[]});
+    if(it.liq) o.qtd++; o.bruto+=it.bruto; o.tarifa+=it.tarifa; o.itens.push(it);
+  }
+  const ordT={mens:0,prod:1,"":2};
+  const grupos=Object.values(g).sort((a,b)=> a.projeto===b.projeto ? ordT[a.tipo]-ordT[b.tipo] : a.projeto==="—"?1:b.projeto==="—"?-1:a.projeto.localeCompare(b.projeto));
+  const zero=()=>({qtd:0,bruto:0,tarifa:0});
+  const tot=zero(), totT={mens:zero(),prod:zero(),"":zero()};
+  for(const x of grupos){ for(const t of [tot,totT[x.tipo]]){ t.qtd+=x.qtd; t.bruto+=x.bruto; t.tarifa+=x.tarifa; } }
+  // extrato
+  let exBol=null, exTar=null;
+  if(S.extrato){
+    const dm=br(D).slice(0,5);
+    for(const m of S.extrato.mov){
+      if(/BOLETOS?\s+RECEBIDOS/i.test(m.desc)){ const a=m.desc.match(/RECEBIDOS\s*(\d{2}\/\d{2})/i);
+        if((a&&a[1]===dm)||(!a&&m.data===D)) exBol=(exBol||0)+m.valor; }
+      if(/TAR.*CUSTAS.*COBRAN/i.test(m.desc) && m.data===D) exTar=(exTar||0)+Math.abs(m.valor);
+    }
+  }
+  const bol = S.override.bol ?? exBol, tar = S.override.tar ?? exTar;
+  return {D,dates,itens,grupos,tot,totT,sobra,exBol,exTar,bol,tar,
+    pend:{sem:itens.filter(i=>i.st==="semprojeto"), tipo:itens.filter(i=>!i.tipo), valor:itens.filter(i=>i.st==="valor"), ausente:itens.filter(i=>i.st==="ausente"), data:itens.filter(i=>i.st==="data")}};
+}
+
+/* ---------- desenho ---------- */
+function slot(name, data, err, facts, hint, extra){
+  let pill='<span class="pill idle">Falta</span>', body=`<div class="file">${hint}</div>`;
+  if(err){ pill='<span class="pill bad">Não li</span>'; body=`<div class="file">${esc(err.name)}</div><div class="err">${esc(err.msg)}</div>`; }
+  if(data){ pill='<span class="pill ok">Lido</span>'; body=`<div class="file">${esc(data.fileName)}</div><div class="facts">${facts}</div>`+(err?`<div class="err">Não troquei pelo arquivo "${esc(err.name)}": ${esc(err.msg)}</div>`:""); }
+  return `<div class="slot"><div class="top"><span class="name">${name}</span>${pill}</div>${body}${extra||""}</div>`;
+}
+function evFacts(e){
+  return e?`${e.rows.length} linhas · ${new Set(e.rows.map(z=>z.projeto)).size} projetos<br><span class="muted small">Créditos de ${[...new Set(e.rows.map(z=>br(z.dcred)).filter(Boolean))].slice(0,3).join(", ")}</span>`:"";
+}
+function renderSlots(){
+  const r=S.ret, x=S.extrato, p=S.projetos, m=S.evParts.mens, pr=S.evParts.prod;
+  const liq=r?r.recs.filter(z=>z.liq):[];
+  const mover=(t)=>`<div><button type="button" class="small" data-mover="${t}" style="padding:3px 10px;font-size:12px;margin-top:4px">Este arquivo é de ${t==="mens"?"produtos":"mensalidades"}</button></div>`;
+  const errEv = S.errPlanilha && !S.evWait ? S.errPlanilha : null;
+  let html=[
+    slot("Retorno Itaú", r, S.errRet, r?`${liq.length} pagos · ${r.recs.length-liq.length} outras ocorrências<br><span class="muted small">Arquivo de ${br(r.head.data)} · ag. ${r.head.agencia} cc ${r.head.conta}</span>`:"", "Arquivo .RET do dia"),
+    slot("Contas a Receber · Mensalidades", m, !m?errEv:null, evFacts(m), "SGE, só mensalidades, pela data de crédito", m?mover("mens"):""),
+    slot("Contas a Receber · Produtos", pr, !pr?errEv:null, evFacts(pr), "SGE, só venda de produtos, pela data de crédito", pr?mover("prod"):""),
+    slot("Extrato Itaú", x, S.errExtrato, x?`${x.mov.length} lançamentos${x.conta?` · ag./cc ${esc(x.conta)}`:""}<br><span class="muted small">${[...new Set(x.mov.map(z=>br(z.data)))].join(", ")}</span>`:"", "PDF da conta corrente"),
+    slot("Lista de projetos", p, null, p?`${p.total} projetos`:"", "Opcional, para mostrar os nomes")
+  ].join("");
+  if(S.evWait) html=`<div class="slot" style="border-color:var(--accent);background:var(--accent-soft);grid-column:1/-1"><div class="top"><span class="name">De que é este Contas a Receber?</span><span class="pill warn">Escolher</span></div>
+    <div class="file">${esc(S.evWait.fileName)} · ${S.evWait.rows.length} linhas</div>
+    <div class="toolbar" style="margin-top:6px"><button type="button" data-wait="mens">Mensalidades</button><button type="button" data-wait="prod">Venda de produtos</button></div>
+    <div class="small muted">Dica: com "mensalidade" ou "produto" no nome do arquivo, o site já sabe sozinho.</div></div>`+html;
+  $("#slots").innerHTML=html;
+  document.querySelectorAll("[data-wait]").forEach(b=>b.addEventListener("click",()=>{ S.evParts[b.dataset.wait]=S.evWait; S.evWait=null; combineEv(); render(); }));
+  document.querySelectorAll("[data-mover]").forEach(b=>b.addEventListener("click",()=>{ const a=S.evParts.mens; S.evParts.mens=S.evParts.prod; S.evParts.prod=a; combineEv(); render(); toast("Mensalidades e produtos trocados"); }));
+}
+function stPill(st){
+  return ({ok:'<span class="pill ok">Confere com SGE</span>',data:'<span class="pill warn">SGE com outra data de crédito</span>',
+    valor:'<span class="pill bad">Valor diferente no SGE</span>',ausente:'<span class="pill warn">Não baixado no SGE</span>',
+    semprojeto:'<span class="pill bad">Sem projeto</span>'})[st] || (S.everest?"":'<span class="pill idle">Sem SGE</span>');
+}
+function tipoTag(t){ return t==="mens"?'<span class="tag mens">Mensalidade</span>':t==="prod"?'<span class="tag prod">Produto</span>':'<span class="tag none">Sem tipo</span>'; }
+function projOptions(sel){
+  const set=new Set([...(S.everest?.rows||[]).map(r=>r.projeto), ...Object.keys(S.projetos?.map||{}), ...Object.values(store.get(CACHE_KEY,{}))]);
+  return `<option value="">Escolher projeto…</option>`+[...set].filter(Boolean).sort().map(p=>`<option value="${esc(p)}"${p===sel?" selected":""}>${esc(p)}${descDe(p)?" · "+esc(descDe(p)):""}</option>`).join("");
+}
+function render(){
+  renderSlots();
+  const res=$("#result");
+  if(!S.ret){ res.hidden=true; $("#howto").hidden=false; return; }
+  $("#howto").hidden = !!(S.everest&&S.extrato);
+  const R=compute(); S.last=R;
+  const dBol = R.bol==null?null:R.bol-R.tot.bruto, dTar = R.tar==null?null:R.tar-R.tot.tarifa;
+  const nPend=R.pend.sem.length+R.pend.valor.length+R.pend.ausente.length+R.pend.data.length+R.sobra.length+R.pend.tipo.filter(i=>i.st!=="semprojeto").length;
+  // arquivos de dias diferentes
+  const exDias=S.extrato?[...new Set(S.extrato.mov.map(m=>m.data))].sort():[];
+  const evDias=S.everest?[...new Set(S.everest.rows.map(x=>x.dcred).filter(Boolean))].sort():[];
+  const exFora = S.extrato && R.exBol==null && !exDias.includes(R.D);
+  const evFora = S.everest && !evDias.includes(R.D);
+  const diasDif = exFora || evFora;
+  const semN = R.grupos.filter(g=>g.projeto==="—").reduce((a,g)=>a+g.qtd,0);
+  const nProj = new Set(R.grupos.filter(g=>g.qtd && g.projeto!=="—").map(g=>g.projeto)).size;
+  const semTipoN = R.totT[""].qtd;
+  let geral;
+  if(diasDif) geral='<span class="pill bad">Arquivos de dias diferentes</span>';
+  else if(R.bol==null) geral='<span class="pill idle">Falta o valor do extrato</span>';
+  else if(dBol===0 && (dTar===0||R.tar==null) && nPend===0) geral='<span class="pill ok">Conciliado</span>';
+  else if(dBol===0) geral=`<span class="pill warn">Valor bate · ${nPend} pendência${nPend===1?"":"s"}</span>`;
+  else geral='<span class="pill bad">Valor não bate com o extrato</span>';
+  S.lastInfo={diasDif,dBol,dTar,nPend};
+
+  const diffCell = d => d==null?'<span class="muted">—</span>':`<span style="color:var(${d===0?"--ok":"--bad"})">${d===0?"R$ 0,00":fmt(d)}</span>`;
+  const dateSel = R.dates.length>1 ? `<label class="small muted" for="selDate">Crédito de</label> <select id="selDate">${R.dates.map(d=>`<option value="${d}"${d===R.D?" selected":""}>${br(d)}</option>`).join("")}</select>` : "";
+  const liqT = t => R.totT[t].bruto-R.totT[t].tarifa;
+
+  let html=`
+  <div class="status-line">
+    <div><div class="eyebrow">Crédito de ${br(R.D)}</div><h2>${R.tot.qtd} boletos em ${nProj} projeto${nProj===1?"":"s"} · ${R.totT.mens.qtd} mensalidade${R.totT.mens.qtd===1?"":"s"} · ${R.totT.prod.qtd} produto${R.totT.prod.qtd===1?"":"s"}${semN?` · <span style="color:var(--bad)">${semN} sem projeto</span>`:""}${semTipoN?` · <span style="color:var(--bad)">${semTipoN} sem tipo</span>`:""}</h2></div>
+    <div class="toolbar">${dateSel}${geral}${saveControls(R)}</div>
+  </div>
+  ${diasDif?`<div class="panel" style="margin-top:14px;border-color:var(--bad);background:var(--bad-soft)">
+    <div style="font-weight:600;color:var(--bad)">Os arquivos não são do mesmo dia. Assim não dá para separar por projeto nem bater com o extrato.</div>
+    <div class="cmp" style="max-width:520px;margin-top:8px"><span>Retorno Itaú (crédito)</span><span class="num">${br(R.D)}</span>
+    ${S.everest?`<span>Contas a Receber (data de crédito)</span><span class="num" style="color:var(${evFora?"--bad":"--ink"})">${evDias.map(br).join(", ")||"—"}</span>`:""}
+    ${S.extrato?`<span>Extrato</span><span class="num" style="color:var(${exFora?"--bad":"--ink"})">${exDias.map(br).join(", ")}</span>`:""}</div>
+    <div class="small" style="margin-top:8px">Use os arquivos do dia ${br(R.D)}: o retorno, o extrato que tem a linha "BOLETOS RECEBIDOS ${br(R.D).slice(0,5)}" e os dois Contas a Receber exportados com data de crédito ${br(R.D)}.</div>
+  </div>`:""}
+  <div class="score" style="margin-top:14px">
+    <div class="panel"><div class="eyebrow">Boletos recebidos</div>
+      <div class="cmp"><span>Extrato</span><span class="num"><input id="inBol" inputmode="decimal" aria-label="Valor de boletos recebidos no extrato" value="${R.bol==null?"":fmtN(R.bol)}" placeholder="0,00"></span>
+      <span>Retorno (valor recebido)</span><span class="num">${fmt(R.tot.bruto)}</span>
+      <span class="diff">Diferença</span><span class="num diff">${diffCell(dBol)}</span></div>
+      ${R.exBol==null&&S.extrato?'<div class="small muted">Não achei "BOLETOS RECEBIDOS '+br(R.D).slice(0,5)+'" neste extrato. Confira se o extrato é do mesmo dia do retorno.</div>':""}
+    </div>
+    <div class="panel"><div class="eyebrow">Tarifa de cobrança</div>
+      <div class="cmp"><span>Extrato</span><span class="num"><input id="inTar" inputmode="decimal" aria-label="Tarifa de cobrança no extrato" value="${R.tar==null?"":fmtN(R.tar)}" placeholder="0,00"></span>
+      <span>Retorno (${R.itens.filter(i=>i.tarifa>0).length} × tarifa)</span><span class="num">${fmt(R.tot.tarifa)}</span>
+      <span class="diff">Diferença</span><span class="num diff">${diffCell(dTar)}</span></div>
+      ${R.exTar==null&&S.extrato?'<div class="small muted">Não achei "TAR/CUSTAS COBRANCA" em '+br(R.D)+' neste extrato.</div>':""}
+    </div>
+    <div class="panel"><div class="eyebrow">Líquido a lançar</div>
+      <div class="cmp"><span>Mensalidades</span><span class="num">${fmt(liqT("mens"))}</span>
+      <span>Produtos</span><span class="num">${fmt(liqT("prod"))}</span>
+      ${semTipoN||R.totT[""].tarifa?`<span style="color:var(--bad)">Sem tipo</span><span class="num" style="color:var(--bad)">${fmt(liqT(""))}</span>`:""}
+      <span class="diff">Total</span><span class="num diff">${fmt(R.tot.bruto-R.tot.tarifa)}</span></div>
+    </div>
+  </div>
+
+  <div class="status-line" style="margin-top:22px">
+    <h2>Por projeto</h2>
+    <div class="toolbar"><button id="btnCopy" type="button">Copiar tabela</button><button id="btnXlsx" type="button">Baixar Excel</button></div>
+  </div>
+  <div class="tbl-wrap" style="margin-top:10px"><table>
+    <thead><tr><th>Projeto</th><th>Descrição</th><th>Tipo</th><th class="r">Boletos</th><th class="r">Valor recebido</th><th class="r">Tarifa</th><th class="r">Líquido</th></tr></thead><tbody>`;
+  let ultimo=null;
+  R.grupos.forEach((g,idx)=>{
+    const open=S.open.has(g.key), novo=g.projeto!==ultimo; ultimo=g.projeto;
+    const irmaos=R.grupos.filter(x=>x.projeto===g.projeto), ultimoDoProj=R.grupos[idx+1]?.projeto!==g.projeto;
+    html+=`<tr class="proj${open?" open":""}${novo?" first":""}" data-k="${esc(g.key)}" tabindex="0"><td class="num">${novo?(g.projeto==="—"?'<span style="color:var(--bad)">Sem projeto</span>':esc(g.projeto)):""}</td><td>${novo?esc(descDe(g.projeto)):""}</td><td>${tipoTag(g.tipo)}</td>
+      <td class="r num">${g.qtd}</td><td class="r num">${fmt(g.bruto)}</td><td class="r num">${fmt(g.tarifa)}</td><td class="r num">${fmt(g.bruto-g.tarifa)}</td></tr>`;
+    if(open){
+      html+=`<tr class="detail"><td colspan="7"><div style="overflow-x:auto"><table><thead><tr><th>Cód.</th><th>Parc.</th><th>Pagador</th><th>Ocorrência</th><th>Venc.</th><th class="r">Título</th><th class="r">Juros/multa</th><th class="r">Recebido</th><th class="r">Tarifa</th><th>SGE</th></tr></thead><tbody>`;
+      for(const i of g.itens) html+=`<tr><td class="num">${esc(i.cod)}</td><td class="num">${esc(i.parcela)}</td><td>${esc(i.pagador)}${i.ref?`<div class="small muted">${esc(i.ref.nome)}</div>`:""}</td><td>${esc(i.occNome)}</td><td class="num">${br(i.venc)}</td>
+        <td class="r num">${fmtN(i.valorTitulo)}</td><td class="r num">${i.juros?fmtN(i.juros):""}</td><td class="r num">${i.liq?fmtN(i.bruto):""}</td><td class="r num">${fmtN(i.tarifa)}</td><td>${stPill(i.st)}${i.fonte==="memória"?'<div class="small muted">projeto pela memória</div>':i.fonte==="manual"?'<div class="small muted">projeto escolhido à mão</div>':""}${i.tipoFonte==="cod"?'<div class="small muted">tipo pelo Cód. do formando</div>':i.tipoFonte==="manual"?'<div class="small muted">tipo escolhido à mão</div>':""}</td></tr>`;
+      html+=`</tbody></table></div></td></tr>`;
+    }
+    if(ultimoDoProj && irmaos.length>1){
+      const s=irmaos.reduce((a,x)=>({qtd:a.qtd+x.qtd,bruto:a.bruto+x.bruto,tarifa:a.tarifa+x.tarifa}),{qtd:0,bruto:0,tarifa:0});
+      html+=`<tr class="subtot"><td></td><td class="muted">Total do projeto</td><td></td><td class="r num">${s.qtd}</td><td class="r num">${fmt(s.bruto)}</td><td class="r num">${fmt(s.tarifa)}</td><td class="r num">${fmt(s.bruto-s.tarifa)}</td></tr>`;
+    }
+  });
+  const footRow=(label,t,cls)=>`<tr class="${cls||""}"><td>${label}</td><td></td><td></td><td class="r num">${t.qtd}</td><td class="r num">${fmt(t.bruto)}</td><td class="r num">${fmt(t.tarifa)}</td><td class="r num">${fmt(t.bruto-t.tarifa)}</td></tr>`;
+  html+=`</tbody><tfoot>${footRow("Mensalidades",R.totT.mens,"t-part")}${footRow("Produtos",R.totT.prod,"t-part")}${R.totT[""].qtd||R.totT[""].tarifa?footRow('<span style="color:var(--bad)">Sem tipo</span>',R.totT[""],"t-part"):""}${footRow("Total (bate com o extrato)",R.tot,"t-all")}</tfoot></table></div>
+  <p class="small muted" style="margin:8px 0 0">Clique numa linha para ver os boletos. O tipo vem da planilha em que o boleto foi encontrado; a tarifa acompanha o tipo do boleto.</p>`;
+
+  // pendências
+  html+=`<div class="status-line" style="margin-top:22px"><h2>Pendências</h2>${nPend?`<span class="pill warn">${nPend}</span>`:'<span class="pill ok">Nenhuma</span>'}</div>`;
+  if(S.everest && evFora) html+=`<p class="note" style="color:var(--bad)">O Contas a Receber carregado não tem nenhum crédito em ${br(R.D)}, que é a data deste retorno. Exporte o SGE pela data de crédito ${br(R.D)}.</p>`;
+  if(!S.everest) html+=`<p class="note">Solte os dois Contas a Receber do SGE (mensalidades e produtos) para conferir cada boleto e separar os tipos.</p>`;
+  else if(!S.evParts.mens||!S.evParts.prod) html+=`<p class="note" style="color:var(--bad)">Falta o Contas a Receber de ${!S.evParts.mens?"mensalidades":"produtos"}. Sem ele, esses boletos ficam sem tipo.</p>`;
+  if(nPend){
+    html+=`<div class="pend-group" style="margin-top:10px">`;
+    if(R.pend.sem.length){
+      html+=`<h3><span class="pill bad">${R.pend.sem.length}</span> Boletos sem projeto</h3><p class="note">O Cód. não está nos Contas a Receber exportados. Exporte o SGE com a data de crédito ${br(R.D)} ou escolha o projeto abaixo (o site lembra a escolha neste navegador).</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Cód.</th><th>Pagador</th><th class="r">Recebido</th><th>Projeto</th><th>Tipo</th></tr></thead><tbody>${R.pend.sem.map(i=>`<tr><td class="num">${esc(i.seu)}</td><td>${esc(i.pagador)}</td><td class="r num">${fmtN(i.bruto||i.tarifa)}</td><td><select data-cod="${esc(i.cod)}" aria-label="Projeto do Cód. ${esc(i.cod)}">${projOptions("")}</select></td><td>${tipoSel(i)}</td></tr>`).join("")}</tbody></table></div>`;
+    }
+    const semTipo=R.pend.tipo.filter(i=>i.st!=="semprojeto");
+    if(semTipo.length){
+      html+=`<h3><span class="pill bad">${semTipo.length}</span> Boletos sem tipo</h3><p class="note">Não deu para saber se é mensalidade ou produto: o boleto não está em nenhuma das duas planilhas, ou casa com as duas (mesmo formando, valor e data). Escolha o tipo.</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Cód.</th><th>Projeto</th><th>Pagador</th><th>Ocorrência</th><th class="r">Recebido</th><th class="r">Tarifa</th><th>Tipo</th></tr></thead><tbody>${semTipo.map(i=>`<tr><td class="num">${esc(i.seu)}</td><td class="num">${esc(i.projeto)}</td><td>${esc(i.pagador)}${i.amb?'<div class="small muted">está nas duas planilhas</div>':""}</td><td>${esc(i.occNome)}</td><td class="r num">${i.liq?fmtN(i.bruto):""}</td><td class="r num">${fmtN(i.tarifa)}</td><td>${tipoSel(i)}</td></tr>`).join("")}</tbody></table></div>`;
+    }
+    const list=(arr,titulo,nota,kind)=>arr.length?`<h3><span class="pill ${kind}">${arr.length}</span> ${titulo}</h3><p class="note">${nota}</p><div class="tbl-wrap"><table><thead><tr><th>Cód.</th><th>Projeto</th><th>Tipo</th><th>Pagador</th><th class="r">Retorno</th><th class="r">SGE</th><th>Crédito SGE</th></tr></thead><tbody>${arr.map(i=>`<tr><td class="num">${esc(i.seu)}</td><td class="num">${esc(i.projeto)}</td><td>${tipoTag(i.tipo)}</td><td>${esc(i.pagador)}</td><td class="r num">${fmtN(i.bruto)}</td><td class="r num">${i.ref?fmtN(i.ref.pago):"—"}</td><td class="num">${i.ref?br(i.ref.dcred):"—"}</td></tr>`).join("")}</tbody></table></div>`:"";
+    html+=list(R.pend.valor,"Valor diferente do SGE","O banco recebeu um valor e o SGE registrou outro para o mesmo formando nesta data. Costuma ser juros ou multa não lançados.","bad");
+    html+=list(R.pend.ausente,"Pagos no banco e não baixados no SGE","O projeto foi encontrado, mas nenhum dos Contas a Receber mostra este pagamento. Dar baixa no SGE.","warn");
+    html+=list(R.pend.data,"SGE com outra data de crédito","O valor bate, mas o SGE registrou o crédito em outro dia.","warn");
+    if(R.sobra.length) html+=`<h3><span class="pill warn">${R.sobra.length}</span> Baixados no SGE e fora deste retorno</h3><p class="note">Boletos Itaú com crédito em ${br(R.D)} no SGE que não vieram neste arquivo de retorno. Conferir se foram pagos em outro dia.</p><div class="tbl-wrap"><table><thead><tr><th>Cód.</th><th>Projeto</th><th>Tipo</th><th>Formando</th><th>Pagador</th><th class="r">Valor pago</th><th>Pagamento</th></tr></thead><tbody>${R.sobra.map(x=>`<tr><td class="num">${esc(x.cod)}</td><td class="num">${esc(x.projeto)}</td><td>${tipoTag(x.tipo)}</td><td>${esc(x.nome)}</td><td>${esc(x.pagador)}</td><td class="r num">${fmtN(x.pago)}</td><td class="num">${br(x.dpag)}</td></tr>`).join("")}</tbody></table></div>`;
+    html+=`</div>`;
+  }
+  res.innerHTML=html; res.hidden=false;
+  wire();
+}
+function tipoSel(i){
+  return `<select data-tipo="${esc(i.k)}" aria-label="Tipo do boleto ${esc(i.seu)}"><option value="">Escolher…</option><option value="mens"${i.tipo==="mens"?" selected":""}>Mensalidade</option><option value="prod"${i.tipo==="prod"?" selected":""}>Produto</option></select>`;
+}
+function wire(){
+  document.querySelectorAll("tr.proj").forEach(tr=>{ const f=()=>{ const k=tr.dataset.k; S.open.has(k)?S.open.delete(k):S.open.add(k); render(); };
+    tr.addEventListener("click",f); tr.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();f();} }); });
+  document.querySelectorAll("select[data-cod]").forEach(s=>s.addEventListener("change",()=>{ if(!s.value) return; S.manual[s.dataset.cod]=s.value;
+    const c=store.get(CACHE_KEY,{}); c[s.dataset.cod]=s.value; store.set(CACHE_KEY,c); render(); toast(`Cód. ${s.dataset.cod} ligado ao projeto ${s.value}`); }));
+  document.querySelectorAll("select[data-tipo]").forEach(s=>s.addEventListener("change",()=>{ if(s.value) S.manualTipo[s.dataset.tipo]=s.value; else delete S.manualTipo[s.dataset.tipo]; render(); }));
+  const sd=$("#selDate"); if(sd) sd.addEventListener("change",()=>{ S.date=sd.value; S.override={bol:null,tar:null}; render(); });
+  const bindIn=(id,k)=>{ const el=$(id); el.addEventListener("change",()=>{ S.override[k]= el.value.trim()===""?null:cents(el.value); render(); }); };
+  bindIn("#inBol","bol"); bindIn("#inTar","tar");
+  $("#btnXlsx").addEventListener("click",exportXlsx);
+  $("#btnCopy").addEventListener("click",copyTable);
+  const bs=$("#btnSave"); if(bs) bs.addEventListener("click",()=>salvarFechamento(false));
+  const by=$("#btnSaveYes"); if(by) by.addEventListener("click",()=>salvarFechamento(true));
+  const bn=$("#btnSaveNo"); if(bn) bn.addEventListener("click",()=>{ H.ask=false; render(); });
+}
+
+/* ---------- saída ---------- */
+function resumoRows(R){
+  const tot=(l,t)=>["",l,"","",t.qtd,t.bruto/100,t.tarifa/100,(t.bruto-t.tarifa)/100];
+  const rows=[["Data crédito","Projeto","Descrição","Tipo","Boletos","Valor recebido","Tarifa","Líquido"],
+    ...R.grupos.map(g=>[br(R.D),g.projeto==="—"?"SEM PROJETO":g.projeto,descDe(g.projeto),TIPO[g.tipo],g.qtd,g.bruto/100,g.tarifa/100,(g.bruto-g.tarifa)/100]),
+    [], tot("Total Mensalidades",R.totT.mens), tot("Total Produtos",R.totT.prod)];
+  if(R.totT[""].qtd||R.totT[""].tarifa) rows.push(tot("Total Sem tipo",R.totT[""]));
+  rows.push(tot("Total geral",R.tot));
+  return rows;
+}
+const stTxt={ok:"Confere com SGE",data:"SGE com outra data de crédito",valor:"Valor diferente no SGE",ausente:"Não baixado no SGE",semprojeto:"Sem projeto","":""};
+const fonteTipo={everest:"Planilha do SGE",cod:"Pelo Cód. do formando",manual:"Escolhido à mão","":""};
+async function exportXlsx(){
+  const R=S.last; if(!R) return;
+  const wb=XLSX.utils.book_new();
+  const add=(name,aoa,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws,name); };
+  add("Por projeto",resumoRows(R),[12,20,34,12,9,15,11,15]);
+  add("Boletos",[["Data crédito","Projeto","Descrição","Tipo","Origem do tipo","Cód.","Parcela","Seu número","Nosso número","Pagador","Formando (SGE)","Ocorrência","Vencimento","Valor título","Juros/multa","Desconto","Valor recebido","Tarifa","Líquido","Conferência SGE"],
+    ...R.itens.map(i=>[br(R.D),i.projeto||"SEM PROJETO",descDe(i.projeto),TIPO[i.tipo],fonteTipo[i.tipoFonte],i.cod,i.parcela,i.seu,i.nosso,i.pagador,i.ref?.nome||"",i.occNome,br(i.venc),i.valorTitulo/100,i.juros/100,i.desconto/100,i.bruto/100,i.tarifa/100,(i.bruto-i.tarifa)/100,stTxt[i.st]])],
+    [12,12,30,12,20,8,8,11,12,32,32,22,11,11,11,10,13,9,12,30]);
+  add("Conferência",[["Item","Extrato","Retorno","Diferença"],
+    ["Boletos recebidos",R.bol==null?"":R.bol/100,R.tot.bruto/100,R.bol==null?"":(R.bol-R.tot.bruto)/100],
+    ["Tarifa de cobrança",R.tar==null?"":R.tar/100,R.tot.tarifa/100,R.tar==null?"":(R.tar-R.tot.tarifa)/100],
+    [],["Retorno",S.ret.fileName],["Contas a Receber · Mensalidades",S.evParts.mens?.fileName||"não carregado"],["Contas a Receber · Produtos",S.evParts.prod?.fileName||"não carregado"],["Extrato",S.extrato?.fileName||"não carregado"]],[30,15,15,15]);
+  const pend=[["Pendência","Cód.","Projeto","Tipo","Pagador / Formando","Valor retorno","Valor SGE","Crédito SGE"]];
+  for(const i of R.pend.sem) pend.push(["Sem projeto",i.seu,"",TIPO[i.tipo],i.pagador,i.bruto/100,"",""]);
+  for(const i of R.pend.tipo.filter(i=>i.st!=="semprojeto")) pend.push(["Sem tipo",i.seu,i.projeto,"",i.pagador,i.bruto/100,i.ref?i.ref.pago/100:"",i.ref?br(i.ref.dcred):""]);
+  for(const i of [...R.pend.valor,...R.pend.ausente,...R.pend.data]) pend.push([stTxt[i.st],i.seu,i.projeto,TIPO[i.tipo],i.pagador,i.bruto/100,i.ref?i.ref.pago/100:"",i.ref?br(i.ref.dcred):""]);
+  for(const x of R.sobra) pend.push(["Baixado no SGE e fora do retorno",x.cod,x.projeto,TIPO[x.tipo],x.nome,"",x.pago/100,br(x.dcred)]);
+  add("Pendências",pend,[34,11,12,12,34,13,13,14]);
+  const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  const filename=`Conciliacao boletos Itau ${br(R.D).replace(/\//g,"-")}.xlsx`;
+  entregar(filename,buf);
+}
+async function copyTable(){
+  const R=S.last; if(!R) return;
+  const tsv=resumoRows(R).map(r=>r.map(v=>typeof v==="number"?v.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:2}):v).join("\t")).join("\n");
+  try{ await navigator.clipboard.writeText(tsv); toast("Tabela copiada. Cole no Excel."); }
+  catch(e){ const ta=document.createElement("textarea"); ta.value=tsv; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy"); toast("Tabela copiada. Cole no Excel.");}catch(_){toast("Selecione e copie a tabela manualmente.");} ta.remove(); }
+}
+
+/* ---------- eventos ---------- */
+const drop=$("#drop"), input=$("#fileInput");
+drop.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); } });
+input.addEventListener("change",()=>{ ingestAll([...input.files]); input.value=""; });
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>ingestAll([...e.dataTransfer.files]));
+$("#btnReset").addEventListener("click",()=>{ Object.assign(S,{ret:null,everest:null,evParts:{mens:null,prod:null},evWait:null,extrato:null,projetos:null,date:"",manual:{},manualTipo:{},override:{bol:null,tar:null},errRet:null,errPlanilha:null,errExtrato:null,errProjetos:null}); S.open.clear(); render(); });
+/* ---------- histórico de fechamentos (Supabase, tabela fechamentos_boletos) ---------- */
+const EMPRESA="alliance";
+const H = { sb:null, sessao:null, perfil:null, docs:[], err:"", ready:false, mes:"", open:new Set(), ask:false, busy:false };
+const podeSalvar = () => ["admin","lanca"].includes(H.perfil?.papel);
+function statusDe(R, info){
+  if(info.diasDif) return {code:"dias", label:"Arquivos de dias diferentes"};
+  if(R.bol==null) return {code:"semextrato", label:"Sem valor do extrato"};
+  if(info.dBol===0 && (info.dTar===0||R.tar==null) && info.nPend===0) return {code:"ok", label:"Conciliado"};
+  if(info.dBol===0) return {code:"pend", label:`Valor bate · ${info.nPend} pendência${info.nPend===1?"":"s"}`};
+  return {code:"diverge", label:"Não bate com o extrato"};
+}
+// linha do banco ↔ formato usado na tela
+function deLinha(l){
+  return { id:l.data, status:l.status, statusTexto:l.status_texto, pendencias:l.pendencias,
+    total:{qtd:l.qtd_boletos,bruto:+l.recebido,tarifa:+l.tarifa},
+    tipos:{mens:{qtd:l.mens_qtd,bruto:+l.mens_recebido,tarifa:+l.mens_tarifa},prod:{qtd:l.prod_qtd,bruto:+l.prod_recebido,tarifa:+l.prod_tarifa},sem:{qtd:l.semtipo_qtd,bruto:+l.semtipo_recebido,tarifa:+l.semtipo_tarifa}},
+    extrato:{boletos:l.extrato_boletos==null?null:+l.extrato_boletos, tarifa:l.extrato_tarifa==null?null:+l.extrato_tarifa},
+    projetos:l.projetos||[], salvoEm:l.salvo_em, salvoPorEmail:l.salvo_por_email||"" };
+}
+function linhaFechamento(R){
+  const info=S.lastInfo, st=statusDe(R,info);
+  return {
+    empresa:EMPRESA, data:R.D, status:st.code, status_texto:st.label, pendencias:info.nPend,
+    qtd_boletos:R.tot.qtd, recebido:R.tot.bruto, tarifa:R.tot.tarifa,
+    mens_qtd:R.totT.mens.qtd, mens_recebido:R.totT.mens.bruto, mens_tarifa:R.totT.mens.tarifa,
+    prod_qtd:R.totT.prod.qtd, prod_recebido:R.totT.prod.bruto, prod_tarifa:R.totT.prod.tarifa,
+    semtipo_qtd:R.totT[""].qtd, semtipo_recebido:R.totT[""].bruto, semtipo_tarifa:R.totT[""].tarifa,
+    extrato_boletos:R.bol, extrato_tarifa:R.tar,
+    projetos:R.grupos.map(g=>({projeto:g.projeto==="—"?"":g.projeto, descricao:descDe(g.projeto), tipo:g.tipo, qtd:g.qtd, bruto:g.bruto, tarifa:g.tarifa})),
+    arquivos:{retorno:S.ret?.fileName||"", mensalidades:S.evParts.mens?.fileName||"", produtos:S.evParts.prod?.fileName||"", extrato:S.extrato?.fileName||""},
+    salvo_por:H.sessao.user.id, salvo_por_email:H.sessao.user.email||"", salvo_em:new Date().toISOString()
+  };
+}
+async function carregarHist(){
+  const { data, error } = await H.sb.from("fechamentos_boletos").select("*").eq("empresa",EMPRESA).order("data",{ascending:false}).limit(1000);
+  if(error){ H.err=error.message||"erro"; } else { H.err=""; H.docs=(data||[]).map(deLinha); }
+  H.ready=true; renderHist(); if(S.ret) render();
+}
+async function salvarFechamento(confirmado){
+  const R=S.last; if(!R||!H.sb||H.busy||!podeSalvar()) return;
+  if(S.lastInfo.diasDif){ toast("Os arquivos são de dias diferentes. Corrija antes de salvar."); return; }
+  if(!confirmado && H.docs.some(d=>d.id===R.D)){ H.ask=true; render(); return; }
+  H.busy=true; H.ask=false; render();
+  const { error } = await H.sb.from("fechamentos_boletos").upsert(linhaFechamento(R), { onConflict:"empresa,data" });
+  H.busy=false;
+  if(error) toast(/row-level security|permission/i.test(error.message) ? "Seu perfil não tem permissão para salvar fechamentos." : "Não consegui salvar. Tente de novo em alguns segundos.");
+  else toast(`Fechamento de ${br(R.D)} salvo no histórico`);
+  await carregarHist();
+}
+function saveControls(R){
+  if(!H.ready) return `<span class="small muted">Carregando histórico…</span>`;
+  if(!podeSalvar()) return `<span class="small muted">Seu perfil só consulta</span>`;
+  const existe=H.docs.find(d=>d.id===R.D);
+  if(H.ask) return `<span class="small" style="color:var(--warn)">Já existe um fechamento de ${br(R.D)} salvo${existe?.salvoEm?` em ${new Date(existe.salvoEm).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})}`:""}. Substituir?</span>
+    <button id="btnSaveYes" type="button" class="primary">Substituir</button><button id="btnSaveNo" type="button">Cancelar</button>`;
+  return `<button id="btnSave" type="button" class="primary"${S.lastInfo.diasDif||H.busy?" disabled":""}>${H.busy?"Salvando…":existe?"Salvar de novo no histórico":"Salvar fechamento do dia"}</button>`;
+}
+const mesNome = m => { const [y,mm]=m.split("-"); const s=new Date(+y,+mm-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); return s.charAt(0).toUpperCase()+s.slice(1); };
+function renderHist(){
+  const el=$("#hist");
+  if(!H.ready){ el.innerHTML=`<div class="status-line"><h2>Histórico de fechamentos</h2></div><p class="note">Carregando…</p>`; return; }
+  if(H.err){ el.innerHTML=`<div class="status-line"><h2>Histórico de fechamentos</h2></div><p class="note" style="color:var(--bad)">Não consegui ler o histórico agora. Recarregue a página.</p>`; return; }
+  const docs=[...H.docs].sort((a,b)=>b.id.localeCompare(a.id));
+  if(!docs.length){ el.innerHTML=`<div class="status-line"><h2>Histórico de fechamentos</h2><span class="pill idle">Vazio</span></div><p class="note">Nenhum dia salvo ainda. Depois de conferir um dia, clique em <strong>Salvar fechamento do dia</strong>: ele entra aqui com o total por projeto, mensalidade e produto.</p>`; return; }
+  const meses=[...new Set(docs.map(d=>d.id.slice(0,7)))];
+  if(!meses.includes(H.mes)) H.mes=meses[0];
+  const doMes=docs.filter(d=>d.id.startsWith(H.mes));
+  const soma=f=>doMes.reduce((a,d)=>a+(f(d)||0),0);
+  const liq=t=>t?(t.bruto-t.tarifa):0;
+  const stTag=d=>`<span class="pill ${d.status==="ok"?"ok":d.status==="pend"?"warn":d.status==="semextrato"?"idle":"bad"}">${esc(d.statusTexto||d.status)}</span>`;
+  let h=`<div class="status-line"><h2>Histórico de fechamentos</h2><div class="toolbar"><label class="small muted" for="selMes">Mês</label><select id="selMes">${meses.map(m=>`<option value="${m}"${m===H.mes?" selected":""}>${mesNome(m)}</option>`).join("")}</select><button id="btnHistXlsx" type="button">Baixar mês em Excel</button></div></div>
+  <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Dia</th><th class="r">Boletos</th><th class="r">Mensalidades</th><th class="r">Produtos</th><th class="r">Tarifa</th><th class="r">Líquido</th><th class="r">Extrato</th><th>Situação</th><th>Salvo por</th></tr></thead><tbody>`;
+  for(const d of doMes){
+    const open=H.open.has(d.id);
+    h+=`<tr class="proj hday${open?" open":""}" data-day="${esc(d.id)}" tabindex="0"><td class="num">${br(d.id)}</td><td class="r num">${d.total?.qtd??0}</td><td class="r num">${fmtN(d.tipos?.mens?.bruto||0)}</td><td class="r num">${fmtN(d.tipos?.prod?.bruto||0)}</td><td class="r num">${fmtN(d.total?.tarifa||0)}</td><td class="r num">${fmtN(liq(d.total))}</td><td class="r num">${d.extrato?.boletos==null?"—":fmtN(d.extrato.boletos)}</td><td>${stTag(d)}</td><td class="small">${esc(d.salvoPorEmail||"—")}${d.salvoEm?`<div class="muted">${new Date(d.salvoEm).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})}</div>`:""}</td></tr>`;
+    if(open){
+      h+=`<tr class="detail"><td colspan="9"><div style="overflow-x:auto"><table><thead><tr><th>Projeto</th><th>Descrição</th><th>Tipo</th><th class="r">Boletos</th><th class="r">Recebido</th><th class="r">Tarifa</th><th class="r">Líquido</th></tr></thead><tbody>${(d.projetos||[]).map(p=>`<tr><td class="num">${p.projeto?esc(p.projeto):'<span style="color:var(--bad)">Sem projeto</span>'}</td><td>${esc(p.descricao||descDe(p.projeto))}</td><td>${tipoTag(p.tipo)}</td><td class="r num">${p.qtd}</td><td class="r num">${fmtN(p.bruto)}</td><td class="r num">${fmtN(p.tarifa)}</td><td class="r num">${fmtN(p.bruto-p.tarifa)}</td></tr>`).join("")}</tbody></table></div></td></tr>`;
+    }
+  }
+  h+=`</tbody><tfoot><tr><td>Total de ${esc(mesNome(H.mes).split(" ")[0].toLowerCase())}</td><td class="r num">${soma(d=>d.total?.qtd)}</td><td class="r num">${fmtN(soma(d=>d.tipos?.mens?.bruto))}</td><td class="r num">${fmtN(soma(d=>d.tipos?.prod?.bruto))}</td><td class="r num">${fmtN(soma(d=>d.total?.tarifa))}</td><td class="r num">${fmtN(soma(d=>liq(d.total)))}</td><td class="r num">${fmtN(soma(d=>d.extrato?.boletos))}</td><td colspan="2"></td></tr></tfoot></table></div>
+  <p class="small muted" style="margin:8px 0 0">${doMes.length} dia${doMes.length===1?"":"s"} salvo${doMes.length===1?"":"s"} em ${esc(mesNome(H.mes).toLowerCase())}. Clique num dia para ver os projetos.</p>`;
+  el.innerHTML=h;
+  el.querySelectorAll("tr.hday").forEach(tr=>{ const f=()=>{ const k=tr.dataset.day; H.open.has(k)?H.open.delete(k):H.open.add(k); renderHist(); };
+    tr.addEventListener("click",f); tr.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();f();} }); });
+  $("#selMes").addEventListener("change",e=>{ H.mes=e.target.value; renderHist(); });
+  $("#btnHistXlsx").addEventListener("click",()=>exportHist(doMes));
+}
+async function exportHist(doMes){
+  const wb=XLSX.utils.book_new();
+  const add=(name,aoa,w)=>{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=w.map(x=>({wch:x})); XLSX.utils.book_append_sheet(wb,ws,name); };
+  const dias=[...doMes].sort((a,b)=>a.id.localeCompare(b.id));
+  add("Dias",[["Dia","Boletos","Mensalidades recebido","Mensalidades tarifa","Produtos recebido","Produtos tarifa","Sem tipo recebido","Total recebido","Total tarifa","Líquido","Extrato boletos","Extrato tarifa","Situação","Salvo por"],
+    ...dias.map(d=>[br(d.id),d.total?.qtd||0,(d.tipos?.mens?.bruto||0)/100,(d.tipos?.mens?.tarifa||0)/100,(d.tipos?.prod?.bruto||0)/100,(d.tipos?.prod?.tarifa||0)/100,(d.tipos?.sem?.bruto||0)/100,(d.total?.bruto||0)/100,(d.total?.tarifa||0)/100,((d.total?.bruto||0)-(d.total?.tarifa||0))/100,d.extrato?.boletos==null?"":d.extrato.boletos/100,d.extrato?.tarifa==null?"":d.extrato.tarifa/100,d.statusTexto||d.status,d.salvoPorEmail])],
+    [11,9,14,12,14,12,12,14,12,14,14,12,26,28]);
+  const pr=[["Dia","Projeto","Descrição","Tipo","Boletos","Valor recebido","Tarifa","Líquido"]];
+  for(const d of dias) for(const p of d.projetos||[]) pr.push([br(d.id),p.projeto||"SEM PROJETO",p.descricao||"",TIPO[p.tipo],p.qtd,p.bruto/100,p.tarifa/100,(p.bruto-p.tarifa)/100]);
+  add("Por projeto",pr,[11,12,34,12,9,15,11,15]);
+  const acc={};
+  for(const d of dias) for(const p of d.projetos||[]){ const k=(p.projeto||"SEM PROJETO")+"|"+p.tipo; const o=acc[k]||(acc[k]={p:p.projeto||"SEM PROJETO",desc:p.descricao||"",t:p.tipo,qtd:0,b:0,tf:0}); o.qtd+=p.qtd; o.b+=p.bruto; o.tf+=p.tarifa; }
+  add("Mês por projeto",[["Projeto","Descrição","Tipo","Boletos","Valor recebido","Tarifa","Líquido"],...Object.values(acc).sort((a,b)=>a.p.localeCompare(b.p)||a.t.localeCompare(b.t)).map(o=>[o.p,o.desc,TIPO[o.t],o.qtd,o.b/100,o.tf/100,(o.b-o.tf)/100])],[12,34,12,9,15,11,15]);
+  const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  entregar(`Historico boletos Itau ${H.mes}.xlsx`,buf);
+}
+function entregar(filename,buf){
+  try{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+  catch(e){ toast("Não foi possível baixar. Use Copiar tabela e cole no Excel."); }
+}
+async function initHist(sb){
+  H.sb=sb;
+  const r=await Sessao.exigirLogin();
+  H.sessao=r.session; H.perfil=r.perfil;
+  $("#app").hidden=false;
+  Sessao.barraUsuario($("#usuario"), r);
+  if(!r.perfil){ H.ready=true; H.err="sem perfil"; renderHist(); $("#semPerfil").hidden=false; return; }
+  await carregarHist();
+}
+window.__conc={ ingestAll, S, compute, initHist, H };
+render();
+initHist(Sessao.sb);
+})();
+</script>
+
+</body>
+</html>

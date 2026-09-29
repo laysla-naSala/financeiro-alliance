@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Financeiro Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+</head>
+<body>
+
+<!-- Tela de login -->
+<main id="telaLogin" class="login" hidden>
+  <div>
+    <div class="eyebrow">naSala · Alliance</div>
+    <h1>Financeiro</h1>
+    <div class="sub">Entre com o e-mail e a senha que você recebeu.</div>
+  </div>
+  <form id="formLogin" novalidate>
+    <label for="email">E-mail<input id="email" type="email" autocomplete="username" required></label>
+    <label for="senha">Senha<input id="senha" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="primary" id="btnEntrar">Entrar</button>
+    <div class="msg" id="msgLogin" role="status"></div>
+    <button type="button" class="linkbtn" id="btnEsqueci">Esqueci a senha</button>
+  </form>
+</main>
+
+<!-- Definir nova senha (link do e-mail de recuperação) -->
+<main id="telaNovaSenha" class="login" hidden>
+  <div><div class="eyebrow">Recuperar acesso</div><h1>Nova senha</h1><div class="sub">Escolha uma senha com pelo menos 8 caracteres.</div></div>
+  <form id="formNovaSenha" novalidate>
+    <label for="nova1">Nova senha<input id="nova1" type="password" autocomplete="new-password" minlength="8" required></label>
+    <label for="nova2">Repita a nova senha<input id="nova2" type="password" autocomplete="new-password" minlength="8" required></label>
+    <button type="submit" class="primary">Salvar nova senha</button>
+    <div class="msg" id="msgNova" role="status"></div>
+  </form>
+</main>
+
+<!-- Portal (logado) -->
+<div id="telaPortal" hidden>
+  <div class="topo"><a class="marca" href="index.html">Financeiro <span>naSala · Alliance</span></a><div class="usuario" id="usuario"></div></div>
+  <div class="wrap">
+    <header><div><div class="eyebrow">Módulos</div><h1>O que você quer abrir?</h1></div></header>
+    <div class="modulos" id="modulos">
+      <a class="modulo" href="conciliacao.html"><span class="eyebrow">Alliance · Itaú</span><span class="t">Conciliação de Boletos</span><span class="d">Separa o crédito de boletos do extrato por projeto, em mensalidade e produto, e guarda o fechamento de cada dia.</span></a>
+    </div>
+    <p class="note" id="semPerfil" hidden>Seu login funcionou, mas ainda não tem perfil de acesso. Peça à Laysla para liberar.</p>
+  </div>
+</div>
+
+<!-- Site ainda sem configuração -->
+<main id="telaConfig" class="login" hidden>
+  <div><div class="eyebrow">Configuração</div><h1>Falta conectar o Supabase</h1>
+  <p class="note">Preencha a URL e a chave pública do projeto em <code>assets/config.js</code>.</p></div>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js"></script>
+<script src="assets/sessao.js"></script>
+<script>
+(function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const telas = ["telaLogin","telaNovaSenha","telaPortal","telaConfig"];
+  const mostrar = id => telas.forEach(t => $("#"+t).hidden = (t !== id));
+  const msg = (el, txt, tipo) => { el.textContent = txt; el.className = "msg" + (tipo ? " " + tipo : ""); };
+  const S = window.Sessao;
+
+  if(!S.configurado || !S.sb){ mostrar("telaConfig"); return; }
+  const sb = S.sb;
+  let recuperando = false;
+
+  async function abrirPortal(){
+    const r = await S.perfilAtual();
+    if(!r){ mostrar("telaLogin"); return; }
+    const voltar = new URLSearchParams(location.search).get("voltar");
+    if(voltar && /^[a-z0-9_-]+\.html$/i.test(voltar) && r.perfil){ location.replace(voltar); return; }
+    S.barraUsuario($("#usuario"), r);
+    $("#semPerfil").hidden = !!r.perfil;
+    $("#modulos").hidden = !r.perfil;
+    mostrar("telaPortal");
+  }
+
+  // Eventos de sessão (sem chamadas ao Supabase dentro do callback, conforme a documentação)
+  sb.auth.onAuthStateChange((evento) => {
+    if(evento === "PASSWORD_RECOVERY"){ recuperando = true; setTimeout(() => mostrar("telaNovaSenha"), 0); }
+  });
+
+  $("#formLogin").addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = $("#email").value.trim(), senha = $("#senha").value, m = $("#msgLogin");
+    if(!email || !senha){ msg(m, "Preencha e-mail e senha.", "erro"); return; }
+    $("#btnEntrar").disabled = true; msg(m, "Entrando…");
+    const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+    $("#btnEntrar").disabled = false;
+    if(error){ msg(m, /invalid/i.test(error.message) ? "E-mail ou senha incorretos." : "Não foi possível entrar agora. Tente de novo em instantes.", "erro"); return; }
+    msg(m, ""); $("#senha").value = "";
+    abrirPortal();
+  });
+
+  $("#btnEsqueci").addEventListener("click", async () => {
+    const email = $("#email").value.trim(), m = $("#msgLogin");
+    if(!email){ msg(m, "Digite seu e-mail acima e clique de novo em Esqueci a senha.", "erro"); return; }
+    const destino = location.origin + location.pathname.replace(/[^/]*$/, "index.html");
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: destino });
+    msg(m, error ? "Não foi possível enviar agora. Tente de novo em instantes." : "Se este e-mail tiver acesso, você vai receber um link para criar uma nova senha.", error ? "erro" : "ok");
+  });
+
+  $("#formNovaSenha").addEventListener("submit", async e => {
+    e.preventDefault();
+    const a = $("#nova1").value, b = $("#nova2").value, m = $("#msgNova");
+    if(a.length < 8){ msg(m, "A senha precisa ter pelo menos 8 caracteres.", "erro"); return; }
+    if(a !== b){ msg(m, "As duas senhas não são iguais.", "erro"); return; }
+    const { error } = await sb.auth.updateUser({ password: a });
+    if(error){ msg(m, "Não foi possível salvar a senha. Peça um novo link em Esqueci a senha.", "erro"); return; }
+    recuperando = false; history.replaceState(null, "", location.pathname);
+    msg(m, "Senha alterada.", "ok"); setTimeout(abrirPortal, 800);
+  });
+
+  setTimeout(() => { if(!recuperando) abrirPortal(); }, 0);
+})();
+</script>
+</body>
+</html>

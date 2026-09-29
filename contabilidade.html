@@ -7,7 +7,7 @@
 <title>Envios à Contabilidade · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929b">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929c">
 <style>
 .inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 7px;font:13px var(--f-body);width:100%;min-width:0}
 .inp:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
@@ -87,9 +87,9 @@ tr.linha.ok td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929b"></script>
-<script src="assets/sessao.js?v=20260929b"></script>
-<script src="assets/layout.js?v=20260929b"></script>
+<script src="assets/config.js?v=20260929c"></script>
+<script src="assets/sessao.js?v=20260929c"></script>
+<script src="assets/layout.js?v=20260929c"></script>
 <script>
 (async function(){
 "use strict";
@@ -358,11 +358,26 @@ function renderAcoes(r){
   $("#statusEnvio").innerHTML = E.status==="enviado" ? `<span class="pill ok">Enviado${s?.enviado_em?` em ${new Date(s.enviado_em).toLocaleDateString("pt-BR")}`:""}</span>` : E.linhas.length ? `<span class="pill warn">Rascunho</span>` : "";
   $("#salvoInfo").textContent = s?.atualizado_em ? `Salvo em ${new Date(s.atualizado_em).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})} por ${s.atualizado_por_email||"—"}${E.sujo?" · há alterações não salvas":""}` : (E.sujo?"Alterações ainda não salvas":"");
   const pode=podeEditar();
+  const bloq = r.bloqueia ? ' disabled title="Resolva as pendências antes"' : "";
+  if(pode && envio.confirmando){
+    $("#acoes").innerHTML = `<span class="small">Enviar a planilha de <b>${esc(mesNome(E.competencia))}</b> para os dois e-mails da contabilidade, com cópia para a Laysla?</span>
+      <button type="button" id="btnConfirma" class="primary"${envio.ocupado?" disabled":""}>${envio.ocupado?"Enviando…":"Confirmar envio"}</button><button type="button" id="btnCancela"${envio.ocupado?" disabled":""}>Cancelar</button>`;
+    $("#btnConfirma").addEventListener("click",()=>enviarContabilidade(false));
+    $("#btnCancela").addEventListener("click",()=>{ envio.confirmando=false; renderAcoes(r); });
+    return;
+  }
   $("#acoes").innerHTML = (pode?`<button type="button" id="btnSalvar"${E.sujo?"":" disabled"}>Salvar rascunho</button>`:"")+
-    `<button type="button" id="btnXlsx">Baixar planilha da contabilidade</button>`+
-    (pode?`<button type="button" class="primary" id="btnEnviado"${r.bloqueia?" disabled title=\"Resolva as pendências antes\"":""}>${E.status==="enviado"?"Marcar como reenviado":"Marcar como enviado"}</button>`:"");
+    `<button type="button" id="btnXlsx">Baixar planilha</button>`+
+    (pode?`<button type="button" id="btnTeste"${bloq}${envio.ocupado?" disabled":""}>Enviar teste para mim</button>`+
+      `<button type="button" class="primary" id="btnEnviar"${bloq}>${E.status==="enviado"?"Reenviar para a contabilidade":"Enviar para a contabilidade"}</button>`+
+      `<button type="button" class="linkbtn" id="btnEnviado"${bloq} style="background:none;border:0;color:var(--muted);font-size:13px;text-decoration:underline">Já enviei por fora</button>`:"");
   $("#btnXlsx").addEventListener("click",exportar);
-  if(pode){ $("#btnSalvar").addEventListener("click",()=>salvar(false)); $("#btnEnviado").addEventListener("click",()=>salvar(true)); }
+  if(pode){
+    $("#btnSalvar").addEventListener("click",()=>salvar(false));
+    $("#btnTeste").addEventListener("click",()=>enviarContabilidade(true));
+    $("#btnEnviar").addEventListener("click",()=>{ envio.confirmando=true; renderAcoes(r); });
+    $("#btnEnviado").addEventListener("click",()=>salvar(true));
+  }
 }
 function render(){
   renderSlots();
@@ -473,7 +488,7 @@ async function salvar(enviado){
 }
 
 /* ---------- planilha para a contabilidade ---------- */
-function exportar(){
+function montarPlanilha(){
   const [y,m]=E.competencia.split("-");
   const wb=XLSX.utils.book_new();
   const add=(nome,aoa,w)=>{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=w.map(x=>({wch:x})); XLSX.utils.book_append_sheet(wb,ws,nome); };
@@ -490,9 +505,38 @@ function exportar(){
   if(emp.length) add("Empréstimos e grupo",[["Data","Categoria","Contraparte","Valor","Observação"],...emp.map(l=>[br(l.data),CATS[l.cat].nome,l.fornecedor,l.valor/100,l.obs])],[11,20,32,16,40]);
   const pend=E.linhas.filter(l=>situacao(l)!=="ok");
   if(pend.length) add("Pendências",[["Data","Fornecedor","Valor","Situação"],...pend.map(l=>[br(l.data),l.fornecedor,Math.abs(l.valor)/100,sit(l)])],[11,32,14,40]);
-  const buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-  try{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})); a.download=`Envio_Contabilidade ${m}-${y}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+  return { buf: XLSX.write(wb,{bookType:"xlsx",type:"array"}), nome:`Envio_Contabilidade ${m}-${y}.xlsx` };
+}
+function exportar(){
+  const { buf, nome } = montarPlanilha();
+  try{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})); a.download=nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
   catch(e){ toast("Não foi possível baixar a planilha."); }
+}
+
+/* ---------- envio por e-mail (fluxo do n8n, caixa da Jhulia) ---------- */
+const envio = { confirmando:false, ocupado:false };
+function paraBase64(buf){ const b=new Uint8Array(buf); let s=""; for(let i=0;i<b.length;i+=0x8000) s+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000)); return btoa(s); }
+async function enviarContabilidade(teste){
+  const url = window.CONFIG?.N8N_ENVIO_CONTABILIDADE;
+  if(!url){ toast("O envio automático ainda não está configurado."); return; }
+  envio.ocupado=true; render();
+  try{
+    if(E.sujo && !teste) await salvar(false);
+    const { buf } = montarPlanilha();
+    const { data:{ session } } = await H.sb.auth.getSession();
+    const L=E.linhas, soma=a=>a.reduce((x,l)=>x+l.valor,0);
+    const resumo = { movimentos:L.length, saidas:soma(L.filter(l=>l.valor<0)), entradas:soma(L.filter(l=>l.valor>0)),
+      emprestimos: L.filter(l=>l.cat==="emprestimo").map(l=>`${br(l.data)} · ${l.fornecedor||"—"} · ${fmt(l.valor)}${l.obs?` · ${l.obs}`:""}`),
+      nfs_a_emitir: L.filter(l=>l.nf_pendente).map(l=>`${br(l.data)} · ${l.fornecedor} · ${fmt(-l.valor)}`) };
+    // texto simples: o navegador não faz a checagem prévia de CORS; o n8n converte de volta
+    const resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=UTF-8" },
+      body: JSON.stringify({ token:session?.access_token, competencia:E.competencia, teste, arquivo_base64:paraBase64(buf), resumo }) });
+    let r={}; try{ r=await resp.json(); }catch(e){}
+    if(!resp.ok || !r.ok){ toast(r.motivo || "O envio falhou. Tente de novo em alguns minutos ou avise a Laysla."); return; }
+    if(teste) toast("E-mail de teste enviado para a sua caixa. Confira antes do envio oficial.");
+    else { envio.confirmando=false; await salvar(true); toast(`Planilha de ${mesNome(E.competencia)} enviada para a contabilidade`); }
+  }catch(e){ toast("Não consegui falar com o serviço de envio. Confira a internet e tente de novo."); }
+  finally{ envio.ocupado=false; render(); }
 }
 
 /* ---------- início ---------- */

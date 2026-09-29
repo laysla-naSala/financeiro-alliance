@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Conciliação Bancária · Financeiro Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929d">
+<style>
+.inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font:14px var(--f-body);width:100%}
+.form-conta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;margin-top:10px}
+.form-conta label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+tr.inativa td{opacity:.55}
+.regra{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px;margin-top:8px}
+.regra span:nth-child(odd){color:var(--muted)}
+</style>
+</head>
+<body>
+<main id="conteudoPagina" hidden>
+  <header>
+    <div class="titulo-pag"><h1>Conciliação Bancária</h1><div class="sub">Situação de conciliação de cada banco ativo da Alliance no Everest</div></div>
+    <div class="toolbar" id="topoStatus"></div>
+  </header>
+  <div id="aviso"></div>
+  <div class="cards" id="cards"></div>
+
+  <section class="panel">
+    <div class="status-line"><h2>Bancos</h2><div class="toolbar" id="acoesContas"></div></div>
+    <div class="tbl-wrap" style="margin-top:10px"><table>
+      <thead><tr><th>Banco</th><th>Agência / conta</th><th>Tipo</th><th>Situação no Everest</th><th>Conciliado até</th><th class="r">Pendências</th><th>Conferido no site</th><th></th></tr></thead>
+      <tbody id="corpoContas"></tbody>
+    </table></div>
+    <form id="formConta" class="form-conta" hidden>
+      <label for="fBanco">Banco<input id="fBanco" class="inp" required></label>
+      <label for="fAg">Agência<input id="fAg" class="inp"></label>
+      <label for="fConta">Conta<input id="fConta" class="inp"></label>
+      <label for="fApelido">Apelido<input id="fApelido" class="inp" placeholder="Ex.: Conta movimento"></label>
+      <label for="fTipo">Tipo<select id="fTipo" class="inp"><option value="corrente">Conta corrente</option><option value="cobranca">Cobrança / recebimentos</option><option value="aplicacao">Aplicação</option><option value="pagamentos">Pagamentos (ex.: SGPay)</option></select></label>
+      <div class="toolbar"><button type="submit" class="primary">Salvar conta</button><button type="button" id="cancelaConta">Cancelar</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Alerta semanal</h2>
+    <div class="regra">
+      <span>Quando</span><span>Toda segunda-feira, às 18h</span>
+      <span>Para</span><span>Flávio e Laysla</span>
+      <span>Dispara se</span><span>algum banco ativo não estiver conciliado no Everest</span>
+      <span>Situação</span><span id="situacaoAlerta"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Últimas leituras do Everest</h2>
+    <div id="historico" style="margin-top:8px"></div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js?v=20260929d"></script>
+<script src="assets/sessao.js?v=20260929d"></script>
+<script src="assets/layout.js?v=20260929d"></script>
+<script>
+(async function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const fmt = c => "R$ " + ((+c||0)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const br = iso => iso ? String(iso).slice(0,10).split("-").reverse().join("/") : "";
+  const quando = t => t ? new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}) : "";
+  const mesNome = m => { const [y,mm]=m.split("-"); const s=new Date(+y,+mm-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); return s.charAt(0).toUpperCase()+s.slice(1); };
+  function toast(m){ const t=$("#toast"); t.textContent=m; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3500); }
+  const TIPO = { corrente:"Conta corrente", cobranca:"Cobrança / recebimentos", aplicacao:"Aplicação", pagamentos:"Pagamentos" };
+
+  const r = await Sessao.exigirLogin();
+  const pag = $("#conteudoPagina");
+  Layout.montar(r, { ativo:"conc-bancaria", trilha:["Financeiro","Conciliação Bancária"], conteudoEl:pag });
+  pag.hidden = false;
+  const admin = r.perfil?.papel === "admin";
+  if(!r.perfil){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Acesso pendente.</b> Peça à Laysla para liberar seu perfil.</span></div>`; return; }
+  const sb = Sessao.sb;
+  let verInativas = false, contas = [], leituras = [], fech = [], envios = [];
+
+  async function carregar(){
+    const [c, l, f, e] = await Promise.all([
+      sb.from("contas_bancarias").select("*").eq("empresa","alliance").order("criado_em",{ascending:true}),
+      sb.from("conciliacao_bancos").select("*").eq("empresa","alliance").order("data_leitura",{ascending:false}).limit(300),
+      sb.from("fechamentos_boletos").select("data,status,status_texto").eq("empresa","alliance").order("data",{ascending:false}).limit(1),
+      sb.from("envios_contabilidade").select("competencia,status,extrato").eq("empresa","alliance").order("competencia",{ascending:false}).limit(1)
+    ]);
+    if(c.error){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Não consegui carregar as contas.</b> Recarregue a página.</span></div>`; return; }
+    contas = c.data || []; leituras = l.data || []; fech = f.data || []; envios = e.data || [];
+    desenhar();
+  }
+
+  function ultimaLeitura(id){ return leituras.find(x => x.conta_id === id); }
+  function conferidoNoSite(ct){
+    if(ct.tipo === "cobranca" && /ita/i.test(ct.banco) && fech[0]) return `Boletos: ${br(fech[0].data)} · ${esc(fech[0].status_texto || fech[0].status)}`;
+    if(ct.tipo === "corrente" && /santander/i.test(ct.banco) && envios[0]) return `Extrato de ${esc(mesNome(envios[0].competencia))}${envios[0].extrato?.cadeia ? " · saldo conferido" : ""} · ${envios[0].status === "enviado" ? "enviado à contabilidade" : "em rascunho"}`;
+    return `<span class="muted">—</span>`;
+  }
+
+  function desenhar(){
+    const ativas = contas.filter(c => c.ativa);
+    const comLeitura = ativas.map(c => ({ c, l: ultimaLeitura(c.id) }));
+    const lidas = comLeitura.filter(x => x.l);
+    const ok = lidas.filter(x => x.l.conciliado).length, pend = lidas.filter(x => !x.l.conciliado).length;
+    const conectado = leituras.length > 0;
+    const ultima = leituras[0]?.lido_em;
+
+    $("#topoStatus").innerHTML = conectado ? (pend ? `<span class="pill bad">${pend} banco${pend>1?"s":""} pendente${pend>1?"s":""}</span>` : `<span class="pill ok">Todos conciliados</span>`) : `<span class="pill idle">Everest ainda não conectado</span>`;
+    $("#aviso").innerHTML = conectado ? "" : `<div class="aviso-amarelo"><span><b>A leitura automática do Everest ainda não está ligada.</b> Assim que o acesso aos dados do Everest da Alliance for liberado, o site passa a mostrar aqui, todo dia, se cada banco está conciliado e até que data. Enquanto isso, a coluna "Conferido no site" mostra o que já é conferido nos outros módulos.</span></div>`;
+    $("#cards").innerHTML = [
+      ["Bancos ativos", String(ativas.length), `${contas.length - ativas.length} inativo${contas.length - ativas.length === 1 ? "" : "s"}`],
+      ["Conciliados", conectado ? String(ok) : "—", conectado ? "no Everest" : "aguardando Everest"],
+      ["Pendentes", conectado ? String(pend) : "—", conectado ? (pend ? "entram no alerta de segunda" : "nenhum") : "aguardando Everest"],
+      ["Última leitura", conectado ? quando(ultima) : "—", conectado ? "leitura diária automática" : "ainda não houve leitura"]
+    ].map(([a,b,c]) => `<div class="card-num"><span class="rot">${a}</span><span class="val">${esc(b)}</span><span class="det">${esc(c)}</span></div>`).join("");
+
+    const lista = contas.filter(c => c.ativa || verInativas);
+    $("#corpoContas").innerHTML = lista.map(c => {
+      const l = ultimaLeitura(c.id);
+      const sit = !c.ativa ? `<span class="pill idle">Inativa</span>` : !l ? `<span class="pill idle">Aguardando Everest</span>` : l.conciliado ? `<span class="pill ok">Conciliado</span>` : `<span class="pill bad">Pendente</span>`;
+      return `<tr class="${c.ativa ? "" : "inativa"}"><td><b>${esc(c.banco)}</b><div class="small muted">${esc(c.apelido || "")}</div></td>
+        <td class="num">${esc([c.agencia, c.conta].filter(Boolean).join(" / ") || "—")}</td><td>${esc(TIPO[c.tipo] || c.tipo)}</td><td>${sit}</td>
+        <td class="num">${l?.conciliado_ate ? br(l.conciliado_ate) : "—"}</td><td class="r num">${l ? `${l.pendencias}${l.valor_pendente ? `<div class="small muted">${fmt(l.valor_pendente)}</div>` : ""}` : "—"}</td>
+        <td class="small">${conferidoNoSite(c)}</td>
+        <td>${admin ? `<button type="button" data-ativa="${c.id}" data-valor="${c.ativa ? "0" : "1"}" style="font-size:12px;padding:4px 10px">${c.ativa ? "Desativar" : "Reativar"}</button>` : ""}</td></tr>`;
+    }).join("") || `<tr><td colspan="8" class="muted">Nenhuma conta cadastrada.</td></tr>`;
+
+    $("#acoesContas").innerHTML = (contas.some(c => !c.ativa) ? `<button type="button" id="verInativas">${verInativas ? "Esconder inativas" : "Mostrar inativas"}</button>` : "") + (admin ? `<button type="button" class="primary" id="novaConta">Adicionar conta</button>` : "");
+    $("#verInativas")?.addEventListener("click", () => { verInativas = !verInativas; desenhar(); });
+    $("#novaConta")?.addEventListener("click", () => { $("#formConta").hidden = false; $("#fBanco").focus(); });
+    document.querySelectorAll("[data-ativa]").forEach(b => b.addEventListener("click", async () => {
+      const { error } = await sb.from("contas_bancarias").update({ ativa: b.dataset.valor === "1" }).eq("id", b.dataset.ativa);
+      if(error){ toast("Não consegui alterar a conta."); return; }
+      toast(b.dataset.valor === "1" ? "Conta reativada" : "Conta desativada: sai da conciliação e do alerta"); carregar();
+    }));
+
+    $("#situacaoAlerta").innerHTML = conectado ? `<span class="pill ${pend ? "warn" : "ok"}">${pend ? `Próximo alerta vai citar ${pend} banco${pend>1?"s":""}` : "Nenhum banco pendente"}</span>` : `<span class="pill idle">Aguardando acesso ao Everest</span>`;
+    $("#historico").innerHTML = leituras.length ? `<div class="tbl-wrap"><table><thead><tr><th>Leitura</th><th>Banco</th><th>Situação</th><th>Conciliado até</th><th class="r">Pendências</th></tr></thead><tbody>${leituras.slice(0,40).map(l => { const c = contas.find(x => x.id === l.conta_id) || {}; return `<tr><td class="num">${br(l.data_leitura)}</td><td>${esc(c.banco || "")} <span class="small muted">${esc(c.apelido || "")}</span></td><td>${l.conciliado ? '<span class="pill ok">Conciliado</span>' : '<span class="pill bad">Pendente</span>'}</td><td class="num">${br(l.conciliado_ate)}</td><td class="r num">${l.pendencias}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="note">Nenhuma leitura ainda. As leituras diárias aparecem aqui assim que o Everest for conectado.</p>`;
+  }
+
+  $("#formConta").addEventListener("submit", async e => {
+    e.preventDefault();
+    const nova = { empresa:"alliance", banco:$("#fBanco").value.trim(), agencia:$("#fAg").value.trim() || null, conta:$("#fConta").value.trim() || null, apelido:$("#fApelido").value.trim() || null, tipo:$("#fTipo").value };
+    if(!nova.banco){ toast("Informe o banco."); return; }
+    const { error } = await sb.from("contas_bancarias").insert(nova);
+    if(error){ toast(/row-level security|permission/i.test(error.message) ? "Só a administração cadastra contas." : "Não consegui salvar a conta."); return; }
+    $("#formConta").reset(); $("#formConta").hidden = true; toast("Conta cadastrada"); carregar();
+  });
+  $("#cancelaConta").addEventListener("click", () => { $("#formConta").reset(); $("#formConta").hidden = true; });
+
+  await carregar();
+})();
+</script>
+</body>
+</html>

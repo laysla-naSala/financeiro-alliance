@@ -7,7 +7,7 @@
 <title>Envios à Contabilidade · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929e">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929f">
 <style>
 .inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 7px;font:13px var(--f-body);width:100%;min-width:0}
 .inp:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
@@ -64,7 +64,7 @@ tr.linha.ok td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
       <div class="filtros" id="filtros"></div>
     </div>
     <div class="tbl-wrap" style="margin-top:10px"><table class="tab-mov">
-      <thead><tr><th>Data</th><th class="r">Valor</th><th>Histórico do banco</th><th>Categoria</th><th>Fornecedor / contraparte</th><th>Nº NF</th><th class="r">Valor NF</th><th>Tipo de serviço</th><th>Observação</th></tr></thead>
+      <thead><tr><th>Data</th><th class="r">Valor</th><th>Histórico do banco</th><th>Categoria</th><th>Fornecedor / contraparte</th><th>Nº NF</th><th class="r">NF bruto</th><th class="r">NF líquido</th><th>Tipo de serviço</th><th>Observação</th></tr></thead>
       <tbody id="corpo"></tbody>
     </table></div>
     <p class="small muted" style="margin:8px 0 0">Faixa verde: linha completa. Amarela: NF a emitir (fica pendente para o mês seguinte). Vermelha: falta dado obrigatório.</p>
@@ -87,9 +87,9 @@ tr.linha.ok td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929e"></script>
-<script src="assets/sessao.js?v=20260929e"></script>
-<script src="assets/layout.js?v=20260929e"></script>
+<script src="assets/config.js?v=20260929f"></script>
+<script src="assets/sessao.js?v=20260929f"></script>
+<script src="assets/layout.js?v=20260929f"></script>
 <script>
 (async function(){
 "use strict";
@@ -108,7 +108,7 @@ const mesNome = m => { const [y,mm]=m.split("-"); const s=new Date(+y,+mm-1,1).t
 
 /* ---------- categorias e o que cada uma exige ---------- */
 const CATS = {
-  fornecedor: { nome:"Fornecedor (com NF)",           exige:["fornecedor","nf","valor_nf","servico"] },
+  fornecedor: { nome:"Fornecedor (com NF)",           exige:["fornecedor","nf","valor_nf","valor_nf_liq","servico"] },
   boleto:     { nome:"Conta / boleto",                exige:["fornecedor","servico"] },
   folha:      { nome:"Folha / comissão",              exige:["fornecedor","servico"] },
   imposto:    { nome:"Imposto / guia",                exige:["servico"] },
@@ -120,7 +120,7 @@ const CATS = {
   devolucao:  { nome:"Devolução / estorno",           exige:["obs"] },
   outros:     { nome:"Outros",                        exige:["fornecedor","obs"] }
 };
-const ROTULO = { fornecedor:"fornecedor", nf:"nº da NF", valor_nf:"valor da NF", servico:"tipo de serviço", obs:"observação" };
+const ROTULO = { fornecedor:"fornecedor", nf:"nº da NF", valor_nf:"valor bruto da NF", valor_nf_liq:"valor líquido da NF", servico:"tipo de serviço", obs:"observação" };
 function sugerirCategoria(desc, valor){
   const d = norm(desc);
   if(valor > 0 && d.includes(CNPJ_ALLIANCE)) return "transf";
@@ -236,6 +236,7 @@ function aplicarPlanilha(){
     if(!l.fornecedor || l.origem==="banco") l.fornecedor=it.fornecedor;
     if(!l.nf && it.nf) l.nf=it.nf;
     if(l.valor_nf==null && it.valor_nf!=null) l.valor_nf=it.valor_nf;
+    sugerirLiquido(l);
     if(!l.servico && it.servico) l.servico=it.servico;
     if(it.obs && !l.obs) l.obs=it.obs;
     if(/A SER EMITIDA|AGUARDANDO NF|A EMITIR/i.test(it.obs)) l.nf_pendente=true;
@@ -244,6 +245,11 @@ function aplicarPlanilha(){
     l.origem="planilha";
   }
   return n;
+}
+// Valor líquido da NF: quando o pago fica entre 85% e 100% do bruto (retenções), o pago é o líquido. Parcelas ficam para preencher.
+function sugerirLiquido(l){
+  if(l.valor_nf_liq!=null || l.valor_nf==null || l.valor>=0) return;
+  const pago=-l.valor; if(pago<=l.valor_nf && pago>=l.valor_nf*0.85) l.valor_nf_liq=pago;
 }
 // memória: fornecedor, categoria e tipo de serviço usados em meses anteriores para o mesmo favorecido
 function aplicarMemoria(l){
@@ -258,7 +264,7 @@ function linhasDoExtrato(ex){
   return ex.recs.map((r,i)=>{
     const k=r.data+"|"+r.valor+"|"+norm(r.desc), a=antigas.get(k);
     if(a) return a;
-    const l={ id:`${r.data}-${i}`, data:r.data, desc:r.desc, valor:r.valor, cat:sugerirCategoria(r.desc,r.valor), fornecedor:"", nf:"", valor_nf:null, servico:"", obs:"", nf_pendente:false, origem:"banco" };
+    const l={ id:`${r.data}-${i}`, data:r.data, desc:r.desc, valor:r.valor, cat:sugerirCategoria(r.desc,r.valor), fornecedor:"", nf:"", valor_nf:null, valor_nf_liq:null, servico:"", obs:"", nf_pendente:false, origem:"banco" };
     if(["fornecedor","boleto","folha","grupo","emprestimo","outros"].includes(l.cat)) l.fornecedor=favorecido(r.desc);
     if(l.cat==="transf") l.fornecedor="Itaú Alliance (conta de recebimentos)";
     if(l.cat==="imposto") l.servico = /MUNICIPA/i.test(r.desc)?"ISS / tributo municipal":/DARF|FEDERA/i.test(r.desc)?"DARF / tributo federal":"";
@@ -269,7 +275,7 @@ function linhasDoExtrato(ex){
 function faltas(l){
   const cat=CATS[l.cat]||CATS.outros; const f=[];
   for(const k of cat.exige){
-    if(k==="nf"||k==="valor_nf"){ if(l.nf_pendente) continue; if(k==="nf" && !String(l.nf).trim()) f.push(k); if(k==="valor_nf" && l.valor_nf==null) f.push(k); }
+    if(k==="nf"||k==="valor_nf"||k==="valor_nf_liq"){ if(l.nf_pendente) continue; if(k==="nf" && !String(l.nf).trim()) f.push(k); if((k==="valor_nf"||k==="valor_nf_liq") && l[k]==null) f.push(k); }
     else if(!String(l[k]||"").trim()) f.push(k);
   }
   return f;
@@ -334,10 +340,11 @@ function renderLinhas(){
       <td><select class="inp c-cat" data-k="cat"${dis}>${optCats(l.cat)}</select></td>
       <td><input class="inp c-forn" data-k="fornecedor" value="${esc(l.fornecedor)}"${dis}></td>
       <td><input class="inp c-nf" data-k="nf" value="${esc(l.nf)}"${dis}><label class="chk"><input type="checkbox" data-k="nf_pendente"${l.nf_pendente?" checked":""}${dis}> NF a emitir</label></td>
-      <td><input class="inp c-vnf" data-k="valor_nf" inputmode="decimal" value="${fmtN(l.valor_nf)}"${dis} style="text-align:right"></td>
+      <td><input class="inp c-vnf" data-k="valor_nf" inputmode="decimal" value="${fmtN(l.valor_nf)}"${dis} style="text-align:right" aria-label="Valor bruto da NF"></td>
+      <td><input class="inp c-vnf" data-k="valor_nf_liq" inputmode="decimal" value="${fmtN(l.valor_nf_liq)}"${dis} style="text-align:right" aria-label="Valor líquido da NF"></td>
       <td><input class="inp c-serv" data-k="servico" value="${esc(l.servico)}" list="listaServicos"${dis}></td>
       <td><input class="inp c-obs" data-k="obs" value="${esc(l.obs)}"${dis}></td>
-    </tr>`; }).join("") || `<tr><td colspan="9" class="muted">Nenhuma linha neste filtro.</td></tr>`;
+    </tr>`; }).join("") || `<tr><td colspan="10" class="muted">Nenhuma linha neste filtro.</td></tr>`;
   const servs=[...new Set([...E.linhas.map(l=>l.servico), ...Object.values(E.memoria).map(m=>m.servico)].filter(Boolean))].sort();
   let dl=$("#listaServicos"); if(!dl){ dl=document.createElement("datalist"); dl.id="listaServicos"; document.body.appendChild(dl); }
   dl.innerHTML=servs.map(s=>`<option value="${esc(s)}">`).join("");
@@ -398,7 +405,7 @@ $("#corpo").addEventListener("input", e=>{
   const el=e.target, tr=el.closest("tr.linha"); if(!tr||!el.dataset.k) return;
   const l=E.linhas.find(x=>x.id===tr.dataset.id); const k=el.dataset.k;
   if(k==="nf_pendente") l.nf_pendente=el.checked;
-  else if(k==="valor_nf") l.valor_nf=cents(el.value);
+  else if(k==="valor_nf"||k==="valor_nf_liq") l[k]=cents(el.value);
   else l[k]=el.value;
   if(k==="cat") { l.cat=el.value; }
   E.sujo=true; atualizarParcial(tr,l);
@@ -410,7 +417,9 @@ $("#corpo").addEventListener("change", e=>{
     if(f && l.servico){ let n=0; E.linhas.forEach(o=>{ if(o!==l && norm(o.fornecedor)===f && !String(o.servico).trim()){ o.servico=l.servico; n++; } });
       if(n){ renderLinhas(); const r=renderResumo(); renderAcoes(r); toast(`Tipo de serviço copiado para mais ${n} linha${n>1?"s":""} de ${l.fornecedor}`); } }
   }
-  if(e.target.dataset.k==="valor_nf"){ const tr=e.target.closest("tr.linha"); const l=E.linhas.find(x=>x.id===tr.dataset.id); e.target.value=fmtN(l.valor_nf); } if(e.target.dataset.k==="cat") renderFiltros(); });
+  if(e.target.dataset.k==="valor_nf"||e.target.dataset.k==="valor_nf_liq"){ const tr=e.target.closest("tr.linha"); const l=E.linhas.find(x=>x.id===tr.dataset.id); const kk=e.target.dataset.k;
+    if(kk==="valor_nf" && l.valor_nf_liq==null){ sugerirLiquido(l); const liq=tr.querySelector('[data-k="valor_nf_liq"]'); if(liq) liq.value=fmtN(l.valor_nf_liq); atualizarParcial(tr,l); }
+    e.target.value=fmtN(l[kk]); } if(e.target.dataset.k==="cat") renderFiltros(); });
 $("#filtros").addEventListener("click", e=>{ const b=e.target.closest("button[data-f]"); if(!b) return; E.filtro=b.dataset.f; renderFiltros(); renderLinhas(); });
 $("#aplicacoes").addEventListener("change", e=>{ const el=e.target; if(el.dataset.apl==null) return; E.aplicacoes[+el.dataset.apl][el.dataset.k]=cents(el.value); el.value=fmtN(E.aplicacoes[+el.dataset.apl][el.dataset.k]); E.sujo=true; const r=renderResumo(); renderAcoes(r); });
 
@@ -458,7 +467,7 @@ async function trocarMes(mes, manterArquivos){
   const { data, error } = await H.sb.from("envios_contabilidade").select("*").eq("empresa",EMPRESA).eq("competencia",mes).maybeSingle();
   if(error){ toast("Não consegui ler o mês salvo. Recarregue a página."); }
   if(data){
-    E.linhas=data.linhas||[]; E.aplicacoes=(data.aplicacoes&&data.aplicacoes.length)?data.aplicacoes:APLIC_PADRAO(); E.extrato=data.extrato; E.status=data.status; E.salvo=data;
+    E.linhas=data.linhas||[]; E.linhas.forEach(sugerirLiquido); E.aplicacoes=(data.aplicacoes&&data.aplicacoes.length)?data.aplicacoes:APLIC_PADRAO(); E.extrato=data.extrato; E.status=data.status; E.salvo=data;
   }
   render();
 }
@@ -493,11 +502,11 @@ function montarPlanilha(){
   const wb=XLSX.utils.book_new();
   const add=(nome,aoa,w)=>{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=w.map(x=>({wch:x})); XLSX.utils.book_append_sheet(wb,ws,nome); };
   const sit=l=>({ok:"Completo",nfpend:"NF a emitir",falta:"Pendente: "+faltas(l).map(k=>ROTULO[k]).join(", ")})[situacao(l)];
-  add(`${m}.${y.slice(2)} Alliance`,[["Data","Tipo","Categoria","Fornecedor / contraparte","Nº NF","Valor da NF","Valor pago / recebido","Tipo de serviço","Histórico do banco","Observação","Situação"],
-    ...E.linhas.map(l=>[br(l.data), l.valor<0?"Saída":"Entrada", CATS[l.cat]?.nome||l.cat, l.fornecedor, l.nf_pendente?"A emitir":l.nf, l.valor_nf==null?"":l.valor_nf/100, Math.abs(l.valor)/100, l.servico, l.desc, l.obs, sit(l)]),
-    [], ["","","","","","","=SUMIF(B2:B"+(E.linhas.length+1)+",\"Saída\",G2:G"+(E.linhas.length+1)+")","Total de saídas"],
-    ["","","","","","","=SUMIF(B2:B"+(E.linhas.length+1)+",\"Entrada\",G2:G"+(E.linhas.length+1)+")","Total de entradas"]],
-    [11,8,26,32,12,13,16,26,44,26,22]);
+  add(`${m}.${y.slice(2)} Alliance`,[["Data","Tipo","Categoria","Fornecedor / contraparte","Nº NF","Valor NF bruto","Valor NF líquido","Valor pago / recebido","Tipo de serviço","Histórico do banco","Observação","Situação"],
+    ...E.linhas.map(l=>[br(l.data), l.valor<0?"Saída":"Entrada", CATS[l.cat]?.nome||l.cat, l.fornecedor, l.nf_pendente?"A emitir":l.nf, l.valor_nf==null?"":l.valor_nf/100, l.valor_nf_liq==null?"":l.valor_nf_liq/100, Math.abs(l.valor)/100, l.servico, l.desc, l.obs, sit(l)]),
+    [], ["","","","","","","","=SUMIF(B2:B"+(E.linhas.length+1)+",\"Saída\",H2:H"+(E.linhas.length+1)+")","Total de saídas"],
+    ["","","","","","","","=SUMIF(B2:B"+(E.linhas.length+1)+",\"Entrada\",H2:H"+(E.linhas.length+1)+")","Total de entradas"]],
+    [11,8,26,32,12,14,14,16,26,44,26,22]);
   const porCat={}; E.linhas.forEach(l=>{ const k=CATS[l.cat]?.nome||l.cat; const o=porCat[k]||(porCat[k]={s:0,e:0,n:0}); o.n++; if(l.valor<0) o.s+=-l.valor; else o.e+=l.valor; });
   add("Resumo",[["Categoria","Movimentos","Saídas","Entradas"],...Object.entries(porCat).map(([k,o])=>[k,o.n,o.s/100,o.e/100]),[],["Conta","Santander ag. 4272 cc 130036433"],["Saldo inicial",E.extrato?.saldoIni==null?"":E.extrato.saldoIni/100],["Saldo final",E.extrato?.saldoFim==null?"":E.extrato.saldoFim/100]],[30,12,16,16]);
   add("Aplicações",[["Aplicação","Saldo inicial","Aplicações","Resgates","Rendimento bruto","IR / IOF","Saldo final"],...E.aplicacoes.map(a=>[a.nome,...["saldo_ini","aplicacoes","resgates","rendimento","ir","saldo_fim"].map(k=>a[k]==null?"":a[k]/100)])],[22,15,15,15,17,12,15]);

@@ -7,7 +7,7 @@
 <title>Envios à Contabilidade · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929g">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929h">
 <style>
 .inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 7px;font:13px var(--f-body);width:100%;min-width:0}
 .inp:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
@@ -87,9 +87,9 @@ tr.linha.ok td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929g"></script>
-<script src="assets/sessao.js?v=20260929g"></script>
-<script src="assets/layout.js?v=20260929g"></script>
+<script src="assets/config.js?v=20260929h"></script>
+<script src="assets/sessao.js?v=20260929h"></script>
+<script src="assets/layout.js?v=20260929h"></script>
 <script>
 (async function(){
 "use strict";
@@ -501,8 +501,17 @@ async function trocarMes(mes, manterArquivos){
   if(data){
     E.linhas=data.linhas||[]; E.linhas.forEach(sugerirLiquido); E.aplicacoes=(data.aplicacoes&&data.aplicacoes.length)?data.aplicacoes:APLIC_PADRAO(); E.extrato=data.extrato; E.status=data.status; E.salvo=data;
   }
+  await preencherAplicacoes();
   await listarAnexos();
   render();
+}
+// Posição das aplicações vem de Financeiro › Rendimentos, quando o relatório do mês já foi salvo lá
+async function preencherAplicacoes(){
+  const { data } = await H.sb.from("rendimentos").select("aplicacao,saldo_ini,aplicacoes,resgates,rendimento,impostos,saldo_fim").eq("empresa",EMPRESA).eq("competencia",E.competencia);
+  const nomes={ vermont:"Vermont", contamax:"Santander ContaMax" };
+  for(const d of data||[]){ const a=E.aplicacoes.find(x=>x.nome===nomes[d.aplicacao]); if(!a) continue;
+    const mapa={ saldo_ini:d.saldo_ini, aplicacoes:d.aplicacoes, resgates:d.resgates, rendimento:d.rendimento, ir:d.impostos, saldo_fim:d.saldo_fim };
+    for(const [k,v] of Object.entries(mapa)) if(a[k]==null && v!=null) a[k]=+v; }
 }
 let confirmarTroca=false;
 function pedirConfirmTroca(mes){

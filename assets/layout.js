@@ -11,6 +11,7 @@
     estrela: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z" fill="currentColor"/>',
     seta:    '<path d="m9 18 6-6-6-6"/>',
     envio:   '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+    grafico: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
     banco:   '<path d="m3 9 9-5 9 5"/><path d="M4 21h16M6 18v-7M10 18v-7M14 18v-7M18 18v-7"/>'
   };
   const icone = (n, t) => `<svg width="${t||18}" height="${t||18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[n]||""}</svg>`;
@@ -21,7 +22,8 @@
     ]},
     { secao: "Financeiro", itens: [
       { id: "conciliacao", nome: "Conciliação de Boletos", href: "conciliacao.html", icone: "boletos" },
-      { id: "conc-bancaria", nome: "Conciliação Bancária", href: "conciliacao-bancaria.html", icone: "banco" }
+      { id: "conc-bancaria", nome: "Conciliação Bancária", href: "conciliacao-bancaria.html", icone: "banco" },
+      { id: "rendimentos",   nome: "Rendimentos",          href: "rendimentos.html",          icone: "grafico" }
     ]},
     { secao: "Contabilidade", itens: [
       { id: "contabilidade", nome: "Envios à Contabilidade", href: "contabilidade.html", icone: "envio" }

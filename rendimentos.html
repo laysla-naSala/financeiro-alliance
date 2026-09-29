@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Rendimentos · Financeiro Alliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929h">
+<style>
+:root{ --serie-carteira:var(--accent); --serie-cdi:#c3c6d8; --grade:#2a2c42; }
+.inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font:14px var(--f-body);width:100%;text-align:right}
+.grafico{position:relative;margin-top:10px}
+.grafico svg{display:block;width:100%;height:auto}
+.legenda{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:4px}
+.legenda span{display:inline-flex;align-items:center;gap:6px}
+.dica{position:absolute;pointer-events:none;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;min-width:160px;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.dica b{display:block;margin-bottom:4px}
+.dica div{display:flex;justify-content:space-between;gap:12px}
+.confere{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px}
+.confere label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+td.abaixo{color:var(--warn);font-weight:600}
+</style>
+</head>
+<body>
+<main id="conteudoPagina" hidden>
+  <header>
+    <div class="titulo-pag"><h1>Rendimentos</h1><div class="sub">Aplicações da Alliance: carteira Vermont e ContaMax do Santander</div></div>
+    <div class="toolbar" id="topo"></div>
+  </header>
+
+  <label class="drop" id="drop" tabindex="0" hidden>
+    <input id="fileInput" type="file" accept=".pdf" hidden>
+    <div><strong>Solte aqui o relatório do mês</strong> <span class="muted">(Vermont "Relatório de Carteira Administrada" ou "Rendimento de Aplicação" do Santander)</span></div>
+    <div class="small muted">O site lê os números e mostra para você conferir antes de salvar.</div>
+  </label>
+  <section class="panel" id="conferir" hidden></section>
+
+  <div id="aviso"></div>
+  <div class="cards" id="cards"></div>
+
+  <section class="panel">
+    <div class="status-line"><h2 id="tituloGraf">Vermont: rendimento do mês × CDI</h2><span class="small muted" id="minCdiTxt"></span></div>
+    <div class="legenda"><span><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="var(--serie-carteira)" stroke-width="2"/><circle cx="13" cy="5" r="4" fill="var(--serie-carteira)"/></svg>Carteira Vermont</span><span><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="var(--serie-cdi)" stroke-width="2" stroke-dasharray="5 4"/></svg>CDI do mês</span></div>
+    <div class="grafico" id="grafico"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Vermont mês a mês</h2>
+    <div class="tbl-wrap" style="margin-top:10px"><table>
+      <thead><tr><th>Mês</th><th class="r">Saldo inicial</th><th class="r">Aplicações</th><th class="r">Resgates</th><th class="r">Impostos</th><th class="r">Rendimento</th><th class="r">% mês</th><th class="r">CDI mês</th><th class="r">% do CDI</th><th class="r">Saldo final</th></tr></thead>
+      <tbody id="tabVermont"></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
+    <h2>Santander ContaMax</h2>
+    <div id="avisoContamax"></div>
+    <div class="tbl-wrap" style="margin-top:10px"><table>
+      <thead><tr><th>Mês</th><th class="r">Saldo inicial</th><th class="r">Aplicações</th><th class="r">Resgates</th><th class="r">Rendimento</th><th class="r">Saldo final</th></tr></thead>
+      <tbody id="tabContamax"></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
+    <h2>Histórico da carteira Vermont por ano</h2>
+    <div class="tbl-wrap" style="margin-top:10px"><table>
+      <thead><tr><th>Ano</th><th class="r">Carteira</th><th class="r">CDI</th><th class="r">% do CDI</th></tr></thead>
+      <tbody id="tabAnos"></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel" id="blocoConfig" hidden>
+    <h2>Alerta</h2>
+    <p class="note">O site avisa no Meu Painel quando o mês da Vermont rende abaixo deste percentual do CDI, e quando o ContaMax fica sem rendimento.</p>
+    <div class="toolbar"><label class="small muted" for="minCdi">% mínimo do CDI</label><input id="minCdi" class="inp" type="number" min="50" max="150" step="1" style="width:90px"><button type="button" id="salvarMin">Salvar</button></div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js?v=20260929h"></script>
+<script src="assets/sessao.js?v=20260929h"></script>
+<script src="assets/layout.js?v=20260929h"></script>
+<script>
+(async function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = c => c==null ? "—" : "R$ " + (c/100).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtN = c => c==null ? "" : (c/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct = (v,d=2) => v==null ? "—" : v.toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d}) + "%";
+const cents = v => { const t=String(v??"").replace(/[^\d,.-]/g,""); if(!t) return null; const n=t.includes(",")?Number(t.replace(/\./g,"").replace(",",".")):Number(t); return isFinite(n)?Math.round(n*100):null; };
+const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const mesNome = c => { const [y,m]=c.split("-"); return MESES[+m-1].charAt(0).toUpperCase()+MESES[+m-1].slice(1)+"/"+y; };
+const mesCurto = c => MESES[+c.split("-")[1]-1].slice(0,3);
+function toast(m){ const t=$("#toast"); t.textContent=m; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3800); }
+
+const r = await Sessao.exigirLogin();
+const pag = $("#conteudoPagina");
+Layout.montar(r, { ativo:"rendimentos", trilha:["Financeiro","Rendimentos"], conteudoEl:pag });
+pag.hidden = false;
+const papel = r.perfil?.papel, pode = papel==="admin"||papel==="lanca", admin = papel==="admin";
+if(!r.perfil){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Acesso pendente.</b> Peça à Laysla para liberar seu perfil.</span></div>`; return; }
+const sb = Sessao.sb;
+let dados = [], minCdi = 100;
+
+async function carregar(){
+  const [a, c] = await Promise.all([
+    sb.from("rendimentos").select("*").eq("empresa","alliance").order("competencia",{ascending:true}).limit(500),
+    sb.from("configuracoes").select("chave,valor").eq("empresa","alliance")
+  ]);
+  if(a.error){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Não consegui carregar os rendimentos.</b> Recarregue a página.</span></div>`; return; }
+  dados = a.data || [];
+  const cfg = (c.data||[]).find(x=>x.chave==="rendimento_min_pct_cdi"); if(cfg) minCdi = +cfg.valor;
+  desenhar();
+}
+
+// CDI de cada mês a partir do CDI acumulado no ano de cada relatório: (1+ano_m)/(1+ano_m-1) − 1
+function comCdiMensal(lista){
+  return lista.map((d,i) => {
+    const [y,m] = d.competencia.split("-").map(Number);
+    const ant = lista.find(x => x.competencia === `${y}-${String(m-1).padStart(2,"0")}`);
+    let cdiMes = null;
+    if(d.cdi_ano!=null){ if(m===1) cdiMes = +d.cdi_ano; else if(ant && ant.cdi_ano!=null) cdiMes = ((1+d.cdi_ano/100)/(1+ant.cdi_ano/100)-1)*100; }
+    const pctCdi = cdiMes && d.pct_mes!=null ? d.pct_mes/cdiMes*100 : null;
+    return { ...d, cdiMes, pctCdi };
+  });
+}
+
+function desenhar(){
+  const vm = comCdiMensal(dados.filter(d=>d.aplicacao==="vermont"));
+  const cm = dados.filter(d=>d.aplicacao==="contamax");
+  const ult = vm[vm.length-1], ultC = cm[cm.length-1];
+  const ano = ult ? ult.competencia.slice(0,4) : String(new Date().getFullYear());
+  const doAno = vm.filter(d=>d.competencia.startsWith(ano));
+  const rendAno = doAno.reduce((a,d)=>a+(+d.rendimento||0),0);
+  const pctCdiAno = ult && ult.cdi_ano ? ult.carteira_ano/ult.cdi_ano*100 : null;
+
+  $("#topo").innerHTML = ult ? `<span class="pill ${ult.pctCdi!=null && ult.pctCdi<minCdi ? "warn" : "ok"}">Último relatório: ${esc(mesNome(ult.competencia))}</span>` : `<span class="pill idle">Sem relatórios</span>`;
+  $("#minCdiTxt").textContent = `Alerta abaixo de ${minCdi}% do CDI`;
+  $("#cards").innerHTML = [
+    ["Total aplicado", fmt((+ult?.saldo_fim||0)+(+ultC?.saldo_fim||0)), `Vermont ${fmt(ult?.saldo_fim)} · ContaMax ${fmt(ultC?.saldo_fim)}`],
+    ["Rendimento do mês (Vermont)", fmt(ult?.rendimento), ult ? `${mesNome(ult.competencia)} · ${pct(ult.pct_mes)} · ${pct(ult.pctCdi,1)} do CDI` : "—"],
+    [`Rendimento em ${ano}`, fmt(rendAno), ult ? `${pct(ult.carteira_ano)} no ano × CDI ${pct(ult.cdi_ano)} · ${pct(pctCdiAno,1)} do CDI` : "—"],
+    ["Acumulado desde o início", fmt(ult?.acumulado), "Desde o início da gestão Vermont"]
+  ].map(([a,b,c]) => `<div class="card-num"><span class="rot">${a}</span><span class="val">${b}</span><span class="det">${esc(c)}</span></div>`).join("");
+
+  $("#tituloGraf").textContent = `Vermont ${ano}: rendimento do mês × CDI`;
+  desenharGrafico(doAno);
+
+  $("#tabVermont").innerHTML = vm.slice().reverse().map(d => `<tr><td>${esc(mesNome(d.competencia))}</td><td class="r num">${fmt(d.saldo_ini)}</td><td class="r num">${d.aplicacoes?fmt(d.aplicacoes):"—"}</td><td class="r num">${d.resgates?fmt(d.resgates):"—"}</td><td class="r num">${d.impostos?fmt(d.impostos):"—"}</td><td class="r num">${fmt(d.rendimento)}</td><td class="r num">${pct(d.pct_mes)}</td><td class="r num">${pct(d.cdiMes)}</td><td class="r num${d.pctCdi!=null && d.pctCdi<minCdi?" abaixo":""}">${pct(d.pctCdi,1)}</td><td class="r num">${fmt(d.saldo_fim)}</td></tr>`).join("") || `<tr><td colspan="10" class="muted">Nenhum relatório da Vermont ainda.</td></tr>`;
+
+  const zerados = cm.filter(d => (+d.rendimento||0)===0 && (+d.saldo_fim||0)>0);
+  $("#avisoContamax").innerHTML = zerados.length ? `<div class="aviso-amarelo" style="margin-top:8px"><span><b>ContaMax sem rendimento em ${zerados.map(d=>mesNome(d.competencia)).join(", ")}.</b> O relatório do Santander mostra R$ 0,00 de rendimento com saldo aplicado. Vale perguntar ao gerente se a aplicação automática está ativa.</span></div>` : "";
+  $("#tabContamax").innerHTML = cm.slice().reverse().map(d => `<tr><td>${esc(mesNome(d.competencia))}</td><td class="r num">${fmt(d.saldo_ini)}</td><td class="r num">${fmt(d.aplicacoes)}</td><td class="r num">${fmt(d.resgates)}</td><td class="r num${(+d.rendimento||0)===0?" abaixo":""}">${fmt(d.rendimento)}</td><td class="r num">${fmt(d.saldo_fim)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Nenhum relatório do ContaMax ainda.</td></tr>`;
+
+  const tab = [...vm].reverse().find(d => d.tabela_anos)?.tabela_anos || {};
+  $("#tabAnos").innerHTML = Object.keys(tab).sort().reverse().map(a => `<tr><td>${a}${a===ano?" (até agora)":""}</td><td class="r num">${pct(tab[a].carteira)}</td><td class="r num">${pct(tab[a].cdi)}</td><td class="r num${tab[a].carteira/tab[a].cdi*100<minCdi?" abaixo":""}">${pct(tab[a].carteira/tab[a].cdi*100,1)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">O histórico vem no relatório da Vermont.</td></tr>`;
+
+  if(admin){ $("#blocoConfig").hidden=false; $("#minCdi").value=minCdi; }
+}
+
+// Gráfico de linhas: carteira × CDI, um ponto por mês; escala única em % (sem segundo eixo)
+function desenharGrafico(lista){
+  const box = $("#grafico");
+  const pts = lista.filter(d => d.pct_mes!=null);
+  if(!pts.length){ box.innerHTML = `<p class="note">Sem meses para mostrar.</p>`; return; }
+  const W=720, H=250, L=46, R=16, T=14, B=30;
+  const vals = pts.flatMap(d => [d.pct_mes, d.cdiMes]).filter(v => v!=null);
+  let lo = Math.floor((Math.min(...vals)-0.05)*10)/10, hi = Math.ceil((Math.max(...vals)+0.05)*10)/10;
+  if(hi-lo < 0.4) hi = lo + 0.4;
+  const x = i => L + (pts.length===1 ? (W-L-R)/2 : i*(W-L-R)/(pts.length-1));
+  const y = v => T + (hi-v)/(hi-lo)*(H-T-B);
+  const ticks = []; for(let v=lo; v<=hi+1e-9; v+=0.2) ticks.push(+v.toFixed(2));
+  const linha = (k) => pts.map((d,i) => d[k]==null ? null : `${x(i)},${y(d[k])}`).filter(Boolean).join(" ");
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rendimento mensal da carteira Vermont comparado ao CDI">`;
+  ticks.forEach(t => { svg += `<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grade)" stroke-width="1"/><text x="${L-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t.toFixed(1).replace(".",",")}%</text>`; });
+  pts.forEach((d,i) => { svg += `<text x="${x(i)}" y="${H-10}" text-anchor="middle" font-size="11" fill="var(--muted)">${mesCurto(d.competencia)}</text>`; });
+  svg += `<polyline points="${linha("cdiMes")}" fill="none" stroke="var(--serie-cdi)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  svg += `<polyline points="${linha("pct_mes")}" fill="none" stroke="var(--serie-carteira)" stroke-width="2"/>`;
+  pts.forEach((d,i) => { svg += `<circle cx="${x(i)}" cy="${y(d.pct_mes)}" r="4.5" fill="var(--serie-carteira)" stroke="var(--panel)" stroke-width="2"/>`; });
+  const ultimo = pts[pts.length-1]; svg += `<text x="${x(pts.length-1)}" y="${y(ultimo.pct_mes)-10}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">${pct(ultimo.pct_mes)}</text>`;
+  const larg = (W-L-R)/Math.max(pts.length-1,1);
+  pts.forEach((d,i) => { svg += `<rect data-i="${i}" x="${x(i)-larg/2}" y="${T}" width="${larg}" height="${H-T-B}" fill="transparent"/>`; });
+  svg += `<line id="guia" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="var(--muted)" stroke-width="1" opacity="0"/></svg><div class="dica" id="dica" hidden></div>`;
+  box.innerHTML = svg;
+  const dica = $("#dica"), guia = $("#guia"), el = box.querySelector("svg");
+  el.querySelectorAll("rect[data-i]").forEach(rc => {
+    rc.addEventListener("mousemove", () => {
+      const i=+rc.dataset.i, d=pts[i];
+      guia.setAttribute("x1",x(i)); guia.setAttribute("x2",x(i)); guia.setAttribute("opacity","0.6");
+      dica.innerHTML = `<b>${esc(mesNome(d.competencia))}</b><div><span>Carteira</span><span class="num">${pct(d.pct_mes)}</span></div><div><span>CDI</span><span class="num">${pct(d.cdiMes)}</span></div><div><span>% do CDI</span><span class="num">${pct(d.pctCdi,1)}</span></div><div><span>Rendimento</span><span class="num">${fmt(d.rendimento)}</span></div>`;
+      dica.hidden = false;
+      const esc2 = el.getBoundingClientRect().width / W, px = x(i)*esc2;
+      dica.style.left = Math.min(px + 12, el.getBoundingClientRect().width - 180) + "px"; dica.style.top = "10px";
+    });
+    rc.addEventListener("mouseleave", () => { dica.hidden = true; guia.setAttribute("opacity","0"); });
+  });
+}
+
+/* ---------- leitura dos relatórios (PDF) ---------- */
+// Texto remontado por linha (mesma altura na página), para tabelas em que o PDF separa rótulo e números
+async function linhasPorAltura(buf){
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise; const linhas=[];
+  for(let p=1;p<=Math.min(pdf.numPages,3);p++){
+    const tc = await (await pdf.getPage(p)).getTextContent(); const grupos=[];
+    for(const it of tc.items){ if(!it.str||!it.str.trim()) continue; const y=it.transform[5];
+      let g=grupos.find(g=>Math.abs(g.y-y)<3); if(!g){ g={y,itens:[]}; grupos.push(g); } g.itens.push({x:it.transform[4],s:it.str.trim()}); }
+    grupos.sort((a,b)=>b.y-a.y).forEach(g=>linhas.push(g.itens.sort((a,b)=>a.x-b.x).map(i=>i.s).join(" ")));
+  }
+  return linhas.join("\n");
+}
+async function textoPaginas(buf){
+  let pdf; try{ pdf = await pdfjsLib.getDocument({data:buf}).promise; }catch(e){ throw new Error("Não consegui abrir este PDF."); }
+  const pags=[];
+  for(let p=1;p<=Math.min(pdf.numPages,3);p++){
+    const tc = await (await pdf.getPage(p)).getTextContent(); let t="", fim=null;
+    for(const it of tc.items){ if(!it.str){ if(it.hasEOL){ t+="\n"; fim=null; } continue; } const x=it.transform[4]; if(fim!=null && x-fim>1.5) t+=" "; t+=it.str; fim=x+(it.width||0); if(it.hasEOL){ t+="\n"; fim=null; } }
+    pags.push(t);
+  }
+  return pags;
+}
+const numBR = s => parseInt(String(s).replace(/\./g,""),10);
+function lerVermont(pags, anterior){
+  const [p1,p2] = pags;
+  const m = p1.match(/(Janeiro|Fevereiro|Mar.o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro),\s*(\d{4})/i);
+  if(!m) return null;
+  const mes = MESES.findIndex(n => n.slice(0,3)===m[1].slice(0,3).toLowerCase())+1, ano = +m[2];
+  const comp = `${ano}-${String(mes).padStart(2,"0")}`;
+  const v1 = [...p1.matchAll(/R\$\s*([\d.]+)\./g)].map(x=>numBR(x[1])).sort((a,b)=>a-b);
+  if(v1.length<3) throw new Error("Não achei o saldo e o rendimento na primeira página.");
+  const saldo_fim=v1[v1.length-1], rend=v1[0], acum=v1[1];
+  let tabela=null, pct_mes=null, carteira_ano=null, cdi_ano=null;
+  const linhas = {}; for(const mm of p2.matchAll(/(20\d\d)\s+((?:-?\d+(?:,\d+)?%\s*){3,})/g)){ linhas[mm[1]] = [...mm[2].matchAll(/(-?\d+(?:,\d+)?)%/g)].map(x=>+x[1].replace(",",".")); }
+  if(linhas[ano]){ const ps=linhas[ano]; const ms=ps.slice(0,-3); pct_mes=ms[mes-1]??null; carteira_ano=ps[ps.length-3]; cdi_ano=ps[ps.length-2];
+    tabela={}; for(const [a,ps2] of Object.entries(linhas)){ const ms2=ps2.slice(0,-3); tabela[a]={ meses:a==="2021"?Array(12-ms2.length).fill(null).concat(ms2):ms2.concat(Array(Math.max(0,12-ms2.length)).fill(null)), carteira:ps2[ps2.length-3], cdi:ps2[ps2.length-2], pct_cdi:ps2[ps2.length-1] }; } }
+  const cand=[...new Set([...p2.matchAll(/(?<![\d,])(\d{1,3}(?:\.\d{3})+|\d{4,})(?![\d,%])/g)].map(x=>numBR(x[1])).filter(v=>v>=1000))];
+  // mesma conta do relatório: saldo inicial + aplicações − resgates − impostos + rendimento = saldo final
+  const inis = anterior ? [anterior] : cand.filter(v=>v!==saldo_fim && v>rend*10).sort((a,b)=>b-a);
+  let achou=null;
+  for(const ini of inis){ const fluxo=saldo_fim-ini-rend; const c=[0,...cand.filter(v=>v!==saldo_fim&&v!==ini&&v!==acum)];
+    for(const apl of c){ for(const resg of c){ if(apl&&resg) continue; for(const imp of c){ if(imp>rend) continue; if(Math.abs(apl-resg-imp-fluxo)<=2){ achou={saldo_ini:ini,aplicacoes:apl,resgates:resg,impostos:imp}; break; } } if(achou) break; } if(achou) break; }
+    if(achou) break; }
+  const base = achou || { saldo_ini: anterior||null, aplicacoes:0, resgates:0, impostos:0 };
+  return { aplicacao:"vermont", competencia:comp, ...Object.fromEntries(Object.entries(base).map(([k,v])=>[k,v==null?null:v*100])),
+    rendimento:rend*100, saldo_fim:saldo_fim*100, acumulado:acum*100, pct_mes, carteira_ano, cdi_ano, tabela_anos:tabela, fecha:!!achou };
+}
+function lerContamax(t){
+  if(!/ContaMax|Posi..o Consolidada Mensal/i.test(t)) return [];
+  const out=[];
+  for(const m of t.matchAll(/(Janeiro|Fevereiro|Mar.o|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)\s+(\d{4})\s*(\*?)\s+((?:-?[\d.]+,\d{2}\s+){7,})/gi)){
+    if(m[3]==="*") continue;   // mês em aberto
+    const v=[...m[4].matchAll(/-?[\d.]+,\d{2}/g)].map(x=>cents(x[0]));
+    const mes = MESES.findIndex(n => n.slice(0,3)===m[1].slice(0,3).toLowerCase())+1;
+    out.push({ aplicacao:"contamax", competencia:`${m[2]}-${String(mes).padStart(2,"0")}`, saldo_ini:v[0], aplicacoes:v[1], resgates:v[2], impostos:0, rendimento:v[5], saldo_fim:v[6], fecha: Math.abs(v[0]+v[1]-v[2]+v[5]-v[6])<=2 });
+  }
+  return out;
+}
+
+let pendentes = [];
+async function ingerir(file){
+  try{
+    const buf = await file.arrayBuffer();
+    const pags = await textoPaginas(buf.slice(0));
+    let regs = lerContamax(await linhasPorAltura(buf.slice(0)));
+    if(!regs.length){
+      const prelim = lerVermont(pags, null);
+      if(!prelim) throw new Error("Não reconheci este relatório. Use o da Vermont ou o \"Rendimento de Aplicação\" do Santander.");
+      const [y,m] = prelim.competencia.split("-").map(Number); const pc = m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,"0")}`;
+      const ant = dados.find(d=>d.aplicacao==="vermont" && d.competencia===pc);
+      regs = [ ant ? lerVermont(pags, ant.saldo_fim/100) : prelim ];
+    }
+    pendentes = regs.map(g => ({ ...g, arquivo:file.name }));
+    mostrarConferencia();
+  }catch(e){ toast(e.message||"Não consegui ler o relatório."); }
+}
+function mostrarConferencia(){
+  const c = $("#conferir"); c.hidden=false;
+  const campos=[["saldo_ini","Saldo inicial"],["aplicacoes","Aplicações"],["resgates","Resgates"],["impostos","Impostos"],["rendimento","Rendimento"],["saldo_fim","Saldo final"]];
+  c.innerHTML = `<div class="status-line"><h2>Confira os números antes de salvar</h2><span class="small muted">${esc(pendentes[0].arquivo)}</span></div>` +
+    pendentes.map((g,i)=>{ const existe=dados.some(d=>d.aplicacao===g.aplicacao&&d.competencia===g.competencia);
+      return `<div style="margin-top:12px"><b>${g.aplicacao==="vermont"?"Vermont":"ContaMax"} · ${esc(mesNome(g.competencia))}</b> ${g.fecha?'<span class="pill ok">A conta fecha</span>':'<span class="pill warn">Confira: a conta não fechou</span>'}${existe?' <span class="pill idle">Substitui o mês já salvo</span>':""}${g.aplicacao==="vermont"?` <span class="small muted">· ${pct(g.pct_mes)} no mês · ${pct(g.carteira_ano)} no ano × CDI ${pct(g.cdi_ano)}</span>`:""}
+      <div class="confere">${campos.map(([k,t])=>`<label>${t}<input class="inp" data-g="${i}" data-k="${k}" inputmode="decimal" value="${fmtN(g[k])}"></label>`).join("")}</div></div>`; }).join("") +
+    `<div class="toolbar" style="margin-top:12px"><button type="button" class="primary" id="salvarRel">Salvar ${pendentes.length>1?`${pendentes.length} meses`:"mês"}</button><button type="button" id="cancelarRel">Cancelar</button></div>`;
+  c.querySelectorAll("input[data-g]").forEach(inp=>inp.addEventListener("change",()=>{ const g=pendentes[+inp.dataset.g]; g[inp.dataset.k]=cents(inp.value); g.fecha = Math.abs((g.saldo_ini||0)+(g.aplicacoes||0)-(g.resgates||0)-(g.impostos||0)+(g.rendimento||0)-(g.saldo_fim||0))<=200; mostrarConferencia(); }));
+  $("#cancelarRel").addEventListener("click",()=>{ pendentes=[]; c.hidden=true; });
+  $("#salvarRel").addEventListener("click", salvar);
+  c.scrollIntoView({behavior:"smooth",block:"start"});
+}
+async function salvar(){
+  const linhas = pendentes.map(g => { const { fecha, ...resto } = g; return { empresa:"alliance", ...resto, atualizado_por:r.session.user.id, atualizado_por_email:r.session.user.email||"", atualizado_em:new Date().toISOString() }; });
+  const { error } = await sb.from("rendimentos").upsert(linhas, { onConflict:"empresa,aplicacao,competencia" });
+  if(error){ toast(/row-level security|permission/i.test(error.message)?"Seu perfil não pode salvar rendimentos.":"Não consegui salvar. Tente de novo."); return; }
+  toast(`${linhas.length>1?`${linhas.length} meses salvos`:"Mês salvo"}`); pendentes=[]; $("#conferir").hidden=true; carregar();
+}
+
+if(pode){
+  const drop=$("#drop"), input=$("#fileInput"); drop.hidden=false;
+  drop.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); } });
+  input.addEventListener("change",()=>{ if(input.files[0]) ingerir(input.files[0]); input.value=""; });
+  ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+  drop.addEventListener("drop",e=>{ if(e.dataTransfer.files[0]) ingerir(e.dataTransfer.files[0]); });
+}
+$("#salvarMin").addEventListener("click", async () => {
+  const v = Math.round(+$("#minCdi").value); if(!(v>=50 && v<=150)){ toast("Use um valor entre 50 e 150."); return; }
+  const { error } = await sb.from("configuracoes").upsert({ empresa:"alliance", chave:"rendimento_min_pct_cdi", valor:v }, { onConflict:"empresa,chave" });
+  if(error){ toast("Não consegui salvar."); return; } minCdi=v; toast(`Alerta ajustado para ${v}% do CDI`); desenhar();
+});
+window.__rend = { lerVermont, lerContamax, textoPaginas, linhasPorAltura };
+await carregar();
+})();
+</script>
+</body>
+</html>

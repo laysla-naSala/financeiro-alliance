@@ -7,7 +7,7 @@
 <title>Meu Painel · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929g">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929h">
 <style>
 .novidades{display:grid;gap:10px;background:var(--warn-soft);border:1px solid #5a4418;border-radius:12px;padding:12px 14px}
 .novidades .topo-nov{display:flex;align-items:center;gap:12px;cursor:pointer;background:none;border:0;padding:0;color:var(--ink);text-align:left;width:100%}
@@ -32,9 +32,9 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929g"></script>
-<script src="assets/sessao.js?v=20260929g"></script>
-<script src="assets/layout.js?v=20260929g"></script>
+<script src="assets/config.js?v=20260929h"></script>
+<script src="assets/sessao.js?v=20260929h"></script>
+<script src="assets/layout.js?v=20260929h"></script>
 <script>
 (async function(){
   "use strict";
@@ -138,6 +138,20 @@
   }
   if(bancosPend.length) pend.push({ nivel:"alerta", icone:"banco", href:"conciliacao-bancaria.html",
     titulo:`Conciliação bancária: ${bancosPend.length} banco${bancosPend.length>1?"s":""} pendente${bancosPend.length>1?"s":""} no Everest`, det: bancosPend.join(" · ") });
+  // 2c. rendimentos: relatório da Vermont do mês anterior, mês abaixo do % mínimo do CDI, ContaMax sem rendimento
+  const [rd, cf] = await Promise.all([ sb.from("rendimentos").select("aplicacao,competencia,pct_mes,cdi_ano,rendimento,saldo_fim").eq("empresa","alliance").order("competencia",{ascending:true}).limit(500),
+                                       sb.from("configuracoes").select("chave,valor").eq("empresa","alliance") ]);
+  const minCdi = +(((cf.data||[]).find(x=>x.chave==="rendimento_min_pct_cdi")||{}).valor ?? 100);
+  const vm = (rd.data||[]).filter(d=>d.aplicacao==="vermont"), cmx = (rd.data||[]).filter(d=>d.aplicacao==="contamax");
+  const compAntR = iso(new Date(hoje.getFullYear(), hoje.getMonth()-1, 1)).slice(0,7);
+  if(vm.length && !vm.some(d=>d.competencia===compAntR) && hoje.getDate()>10) pend.push({ nivel:"aviso", icone:"grafico", href:"rendimentos.html", titulo:`Rendimentos: falta o relatório da Vermont de ${mesNome(compAntR)}`, det:"Solte o PDF do mês em Financeiro › Rendimentos" });
+  const uv = vm[vm.length-1];
+  if(uv){ const [y,m]=uv.competencia.split("-").map(Number); const ant=vm.find(d=>d.competencia===(m===1?null:`${y}-${String(m-1).padStart(2,"0")}`));
+    const cdiMes = m===1 ? +uv.cdi_ano : (ant && ant.cdi_ano!=null ? ((1+uv.cdi_ano/100)/(1+ant.cdi_ano/100)-1)*100 : null);
+    const pc = cdiMes && uv.pct_mes!=null ? uv.pct_mes/cdiMes*100 : null;
+    if(pc!=null && pc<minCdi) pend.push({ nivel:"aviso", icone:"grafico", href:"rendimentos.html", titulo:`Rendimentos: Vermont rendeu ${pc.toFixed(1).replace(".",",")}% do CDI em ${mesNome(uv.competencia)}`, det:`Abaixo do mínimo de ${minCdi}% do CDI` }); }
+  const zer = cmx.filter(d=>(+d.rendimento||0)===0 && (+d.saldo_fim||0)>0);
+  if(zer.length) pend.push({ nivel:"alerta", icone:"grafico", href:"rendimentos.html", titulo:`ContaMax do Santander sem rendimento`, det:`${zer.map(d=>mesNome(d.competencia)).join(", ")} · saldo aplicado e R$ 0,00 de rendimento` });
   // 3. envio à contabilidade do mês anterior
   const ant = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1); const compAnt = iso(ant).slice(0,7);
   const envAnt = envios.find(e=>e.competencia===compAnt);

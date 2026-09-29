@@ -7,69 +7,158 @@
 <title>Meu Painel · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929b">
+<style>
+.novidades{display:grid;gap:10px;background:var(--warn-soft);border:1px solid #5a4418;border-radius:12px;padding:12px 14px}
+.novidades .topo-nov{display:flex;align-items:center;gap:12px;cursor:pointer;background:none;border:0;padding:0;color:var(--ink);text-align:left;width:100%}
+.novidades .ic-nov{width:34px;height:34px;border-radius:9px;background:#4a3616;color:var(--warn);display:grid;place-items:center;flex:none}
+.novidades b{color:var(--warn);font-size:15px}
+.novidades .d{font-size:13px;color:var(--muted)}
+.novidades ul{margin:0;padding-left:58px;display:grid;gap:6px;font-size:14px}
+.novidades li span{color:var(--muted);font-size:12px;margin-left:6px}
+.bloco-tit{display:flex;align-items:center;gap:8px;font:600 16px var(--f-display);padding:10px 0 2px}
+.item-lista .ic.alerta{color:var(--bad)} .item-lista .ic.aviso{color:var(--warn)} .item-lista .ic.ok{color:var(--ok)}
+.vazio-lista{font-size:14px;color:var(--muted);padding:10px 0}
+</style>
 </head>
 <body>
 <main id="conteudoPagina" hidden>
+  <section class="novidades" id="novidades" hidden></section>
   <div class="titulo-pag"><h1>Meu Painel</h1><div class="sub" id="ola">Carregando…</div></div>
-  <div id="aviso"></div>
   <div class="cards" id="cards"></div>
-  <section class="lista" id="recentes" hidden></section>
+  <section class="lista" id="blocoPend" hidden></section>
+  <section class="lista" id="blocoNotif" hidden></section>
 </main>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js"></script>
-<script src="assets/sessao.js"></script>
-<script src="assets/layout.js"></script>
+<script src="assets/config.js?v=20260929b"></script>
+<script src="assets/sessao.js?v=20260929b"></script>
+<script src="assets/layout.js?v=20260929b"></script>
 <script>
 (async function(){
   "use strict";
   const $ = s => document.querySelector(s);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const fmt = c => "R$ " + ((+c||0)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
-  const br = iso => iso ? iso.split("-").reverse().join("/") : "";
+  const br = iso => iso ? iso.slice(0,10).split("-").reverse().join("/") : "";
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   const mesNome = m => { const [y,mm]=m.split("-"); const s=new Date(+y,+mm-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); return s.charAt(0).toUpperCase()+s.slice(1); };
+  const quando = t => t ? new Date(t).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}) : "";
+  const lerLS = k => { try { return localStorage.getItem(k); } catch(e) { return null; } };
+  const gravarLS = (k,v) => { try { localStorage.setItem(k,v); } catch(e) {} };
+
+  // O que mudou no site. A mais nova primeiro; o contador mostra as que a pessoa ainda não abriu.
+  const NOVIDADES = [
+    { id:"n4", data:"2026-09-29", titulo:"Envios à Contabilidade", texto:"Monta o arquivo do mês a partir do extrato do Santander, com NF, fornecedor e tipo de serviço de cada movimento." },
+    { id:"n3", data:"2026-09-29", titulo:"Meu Painel com notificações", texto:"Pendências do que depende de você e o que aconteceu na conciliação e na contabilidade." },
+    { id:"n2", data:"2026-09-29", titulo:"Visual da Alliance", texto:"Tema escuro e logo da Alliance, no padrão do P.O." },
+    { id:"n1", data:"2026-09-29", titulo:"Conciliação de Boletos", texto:"Separa o crédito de boletos do Itaú por projeto, em mensalidade e produto, com histórico dos fechamentos." }
+  ];
 
   const r = await Sessao.exigirLogin();
   const pag = $("#conteudoPagina");
   Layout.montar(r, { ativo:"painel", trilha:["Principal","Meu Painel"], conteudoEl:pag });
   pag.hidden = false;
+  const uid = r.session.user.id, papel = r.perfil?.papel;
   const nome = r.perfil?.nome || (r.session.user.email||"").split("@")[0];
-  $("#ola").textContent = `Olá, ${nome} — recebimentos de boletos da Alliance`;
-  if(!r.perfil){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Acesso pendente.</b> Peça à Laysla para liberar seu perfil.</span></div>`; return; }
+  const quemFaz = papel === "admin" || papel === "lanca";
+  $("#ola").textContent = `Olá, ${nome} — sua visão pessoal`;
 
-  const { data, error } = await Sessao.sb.from("fechamentos_boletos")
-    .select("data,status,status_texto,pendencias,qtd_boletos,recebido,tarifa,mens_recebido,prod_recebido,extrato_boletos,salvo_por_email,salvo_em")
-    .eq("empresa","alliance").order("data",{ascending:false}).limit(400);
-  if(error){ $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Não consegui carregar os fechamentos.</b> Recarregue a página.</span></div>`; return; }
-  const dias = data || [];
-  if(!dias.length){
-    $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Nenhum fechamento salvo ainda.</b> Abra a <a href="conciliacao.html">Conciliação de Boletos</a>, confira um dia e clique em Salvar fechamento do dia. Os números aparecem aqui.</span></div>`;
-    return;
+  // ---------- novidades ----------
+  const chaveNov = "novidades-vistas-" + uid;
+  const vistas = new Set((lerLS(chaveNov) || "").split(",").filter(Boolean));
+  const novas = NOVIDADES.filter(n => !vistas.has(n.id));
+  const nov = $("#novidades");
+  if(novas.length){
+    nov.hidden = false;
+    nov.innerHTML = `<button type="button" class="topo-nov" id="abrirNov" aria-expanded="false"><span class="ic-nov">${Layout.icone("estrela",18)}</span><span><b>Tem ${novas.length} novidade${novas.length>1?"s":""} no Financeiro</b><div class="d">${esc(novas[0].titulo)}: ${esc(novas[0].texto)}</div></span></button><ul hidden id="listaNov">${novas.map(n=>`<li><b style="color:var(--ink);font-size:14px">${esc(n.titulo)}</b><span>${br(n.data)}</span><div class="d">${esc(n.texto)}</div></li>`).join("")}</ul>`;
+    $("#abrirNov").addEventListener("click", () => {
+      const l=$("#listaNov"), abrir=l.hidden; l.hidden=!abrir; $("#abrirNov").setAttribute("aria-expanded", String(abrir));
+      if(abrir) gravarLS(chaveNov, NOVIDADES.map(n=>n.id).join(","));   // abriu = viu
+    });
   }
 
-  // mês de referência: o do fechamento mais recente
-  const mes = dias[0].data.slice(0,7), doMes = dias.filter(d => d.data.startsWith(mes));
+  if(!r.perfil){ $("#cards").innerHTML = `<div class="aviso-amarelo"><span><b>Acesso pendente.</b> Peça à Laysla para liberar seu perfil.</span></div>`; return; }
+
+  // ---------- dados dos módulos ----------
+  const sb = Sessao.sb;
+  const [fech, envs] = await Promise.all([
+    sb.from("fechamentos_boletos").select("data,status,status_texto,pendencias,qtd_boletos,recebido,tarifa,mens_recebido,prod_recebido,salvo_por_email,salvo_em").eq("empresa","alliance").order("data",{ascending:false}).limit(120),
+    sb.from("envios_contabilidade").select("competencia,status,resumo,atualizado_por_email,atualizado_em,enviado_por_email,enviado_em,linhas").eq("empresa","alliance").order("competencia",{ascending:false}).limit(6)
+  ]);
+  if(fech.error || envs.error){ $("#cards").innerHTML = `<div class="aviso-amarelo"><span><b>Não consegui carregar os dados.</b> Recarregue a página.</span></div>`; return; }
+  const dias = fech.data || [], envios = envs.data || [];
+
+  // ---------- quadros do mês (recebimentos) ----------
+  const hoje = new Date(); const mesAtual = iso(hoje).slice(0,7);
+  const mesRef = dias.length ? dias[0].data.slice(0,7) : mesAtual;
+  const doMes = dias.filter(d => d.data.startsWith(mesRef));
   const soma = k => doMes.reduce((a,d)=>a+(+d[k]||0),0);
-  const pend = dias.filter(d => d.status !== "ok");
-  const ult = dias[0];
-  if(ult.status !== "ok") $("#aviso").innerHTML = `<div class="aviso-amarelo"><span><b>Último fechamento (${br(ult.data)}) com atenção:</b> ${esc(ult.status_texto||ult.status)}. Confira na Conciliação de Boletos.</span></div>`;
-
   $("#cards").innerHTML = [
-    ["Recebido em boletos", fmt(soma("recebido")), `${mesNome(mes)} · ${doMes.length} dia${doMes.length===1?"":"s"} fechado${doMes.length===1?"":"s"}`],
-    ["Mensalidades", fmt(soma("mens_recebido")), mesNome(mes)],
-    ["Venda de produtos", fmt(soma("prod_recebido")), mesNome(mes)],
+    ["Recebido em boletos", fmt(soma("recebido")), `${mesNome(mesRef)} · ${doMes.length} dia${doMes.length===1?"":"s"} fechado${doMes.length===1?"":"s"}`],
+    ["Mensalidades", fmt(soma("mens_recebido")), mesNome(mesRef)],
+    ["Venda de produtos", fmt(soma("prod_recebido")), mesNome(mesRef)],
     ["Tarifa de cobrança", fmt(soma("tarifa")), `Líquido ${fmt(soma("recebido")-soma("tarifa"))}`]
-  ].map(([rot,val,det]) => `<div class="card-num"><span class="rot">${rot}</span><span class="val">${val}</span><span class="det">${esc(det)}</span></div>`).join("");
+  ].map(([a,b,c]) => `<div class="card-num"><span class="rot">${a}</span><span class="val">${b}</span><span class="det">${esc(c)}</span></div>`).join("");
 
-  const ic = Layout.icone("boletos");
-  $("#recentes").hidden = false;
-  $("#recentes").innerHTML = `<h2>Fechamentos recentes ${pend.length?`<span class="contador" title="Com pendência ou divergência">${pend.length}</span>`:""}</h2>` +
-    dias.slice(0,12).map(d => {
-      const cor = d.status==="ok"?"ok":d.status==="pend"?"warn":d.status==="semextrato"?"idle":"bad";
-      return `<a class="item-lista" href="conciliacao.html"><span class="ic">${ic}</span><span><div class="t">Fechamento de boletos: ${br(d.data)}</div><div class="d">${d.qtd_boletos} boletos · ${fmt(d.recebido)} recebido · salvo por ${esc(d.salvo_por_email||"—")}</div></span><span class="dir"><span class="pill ${cor}">${esc(d.status_texto||d.status)}</span></span></a>`;
-    }).join("");
+  // ---------- pendências (o que depende de alguém agir) ----------
+  const pend = [];
+  // 1. dias úteis do mês sem fechamento de boletos (a partir do primeiro fechamento salvo)
+  if(dias.length){
+    const salvos = new Set(dias.map(d=>d.data));
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    const primeiro = new Date(dias[dias.length-1].data + "T12:00:00");
+    const ini = primeiro > inicioMes ? primeiro : inicioMes;
+    const ontem = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const faltam = [];
+    for(let d=new Date(ini); d < ontem; d.setDate(d.getDate()+1)){
+      const w=d.getDay(); if(w===0||w===6) continue;
+      if(!salvos.has(iso(d))) faltam.push(iso(d));
+    }
+    if(faltam.length) pend.push({ nivel:"aviso", icone:"boletos", href:"conciliacao.html",
+      titulo:`Conciliação de boletos: ${faltam.length} dia${faltam.length>1?"s":""} út${faltam.length>1?"eis":"il"} sem fechamento`,
+      det:`${faltam.slice(-6).map(br).join(", ")}${faltam.length>6?" e outros":""} · confira se houve crédito ou se foi feriado` });
+  }
+  // 2. fechamentos com pendência ou divergência (últimos 30)
+  dias.slice(0,30).filter(d=>d.status!=="ok").forEach(d => pend.push({ nivel: d.status==="pend"?"aviso":"alerta", icone:"boletos", href:"conciliacao.html",
+    titulo:`Fechamento de boletos com atenção: ${br(d.data)}`, det:`${d.status_texto||d.status} · salvo por ${d.salvo_por_email||"—"}` }));
+  // 3. envio à contabilidade do mês anterior
+  const ant = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1); const compAnt = iso(ant).slice(0,7);
+  const envAnt = envios.find(e=>e.competencia===compAnt);
+  if(!envAnt) pend.push({ nivel:"aviso", icone:"envio", href:"contabilidade.html", titulo:`Envio à contabilidade de ${mesNome(compAnt)}: não iniciado`, det:"Solte o extrato do Santander do mês para montar o arquivo" });
+  else if(envAnt.status!=="enviado"){
+    const f=envAnt.resumo?.faltando||0;
+    pend.push({ nivel: f?"alerta":"aviso", icone:"envio", href:"contabilidade.html", titulo:`Envio à contabilidade de ${mesNome(compAnt)}: em rascunho`,
+      det:`${f?`${f} linha${f>1?"s":""} com dado faltando · `:"Pronto para enviar · "}atualizado ${quando(envAnt.atualizado_em)} por ${envAnt.atualizado_por_email||"—"}` });
+  }
+  // 4. NFs a emitir que seguem abertas (último envio que tenha alguma)
+  const comNf = envios.find(e=>(e.linhas||[]).some(l=>l.nf_pendente));
+  if(comNf){ const ls=(comNf.linhas||[]).filter(l=>l.nf_pendente);
+    pend.push({ nivel:"aviso", icone:"envio", href:"contabilidade.html", titulo:`NFs a emitir de ${mesNome(comNf.competencia)}: ${ls.length}`,
+      det:ls.slice(0,5).map(l=>`${l.fornecedor} (${fmt(-l.valor)})`).join(" · ")+(ls.length>5?" …":"") }); }
+
+  // ---------- notificações (o que aconteceu) ----------
+  const notif = [];
+  dias.slice(0,15).forEach(d => notif.push({ quando:d.salvo_em, nivel:d.status==="ok"?"ok":d.status==="pend"?"aviso":"alerta", icone:"boletos", href:"conciliacao.html",
+    titulo:`Fechamento de boletos: ${br(d.data)}`, det:`${d.qtd_boletos} boletos · ${fmt(d.recebido)} · ${d.status_texto||d.status} · salvo por ${d.salvo_por_email||"—"}` }));
+  envios.forEach(e => {
+    if(e.enviado_em) notif.push({ quando:e.enviado_em, nivel:"ok", icone:"envio", href:"contabilidade.html", titulo:`Envio à contabilidade: ${mesNome(e.competencia)}`, det:`Marcado como enviado por ${e.enviado_por_email||"—"} · ${e.resumo?.movimentos||0} movimentos` });
+    const emp = e.resumo?.por_categoria?.emprestimo;
+    if(emp && papel==="admin") notif.push({ quando:e.atualizado_em, nivel:"aviso", icone:"envio", href:"contabilidade.html", titulo:`Empréstimos identificados em ${mesNome(e.competencia)}`, det:`${emp.qtd} movimento${emp.qtd>1?"s":""} · ${fmt(Math.abs(emp.valor))}` });
+  });
+  notif.sort((a,b)=>String(b.quando).localeCompare(String(a.quando)));
+
+  // ---------- desenho ----------
+  const item = n => `<a class="item-lista" href="${n.href}"><span class="ic ${n.nivel||""}">${Layout.icone(n.icone)}</span><span><div class="t">${esc(n.titulo)}</div><div class="d">${esc(n.det)}${n.quando?` · ${quando(n.quando)}`:""}</div></span></a>`;
+  const bp = $("#blocoPend");
+  bp.hidden = false;
+  bp.innerHTML = `<div class="bloco-tit">${quemFaz?"Para você resolver":"Pendências"} ${pend.length?`<span class="contador">${pend.length}</span>`:""}</div>` +
+    (pend.length ? pend.map(item).join("") : `<div class="vazio-lista">Nada pendente. Tudo em dia.</div>`);
+  const bn = $("#blocoNotif");
+  bn.hidden = false;
+  bn.innerHTML = `<div class="bloco-tit">Notificações ${notif.length?`<span class="contador" style="background:var(--soft);color:var(--ink)">${notif.length}</span>`:""}</div>` +
+    (notif.length ? notif.slice(0,25).map(item).join("") : `<div class="vazio-lista">Ainda não há movimentação. Quando alguém salvar um fechamento ou registrar um envio, aparece aqui.</div>`);
 })();
 </script>
 </body>

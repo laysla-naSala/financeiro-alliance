@@ -68,10 +68,10 @@
 
     const nav = shell.querySelector("#latNav");
     function desenharMenu(filtro){
-      const f = (filtro || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      const f = (filtro || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
       let html = "";
       for(const s of MENU){
-        const itens = s.itens.filter(i => !f || i.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes(f));
+        const itens = s.itens.filter(i => !f || i.nome.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().includes(f));
         if(!itens.length) continue;
         if(s.secao) html += `<div class="lat-sec">${esc(s.secao)}</div>`;
         html += itens.map(i => `<a class="lat-item${i.id===ativo?" ativo":""}" href="${i.href}"${i.id===ativo?' aria-current="page"':""}>${icone(i.icone)}<span>${esc(i.nome)}</span></a>`).join("");

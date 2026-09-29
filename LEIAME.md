@@ -19,7 +19,7 @@ Site com login e senha, no visual do Alliance P.O.. Hoje tem **Meu Painel** e **
 - `assets/config.js`: URL e chave **pública** do Supabase
 - `assets/sessao.js`: sessão e perfil, usados por todas as páginas
 - `assets/estilo.css`: visual
-- `supabase/01_estrutura.sql`, `02_envios_contabilidade.sql` e `03_conciliacao_bancaria.sql` e `04_subcontas.sql`: tabelas e regras de acesso (rodar uma vez, nessa ordem)
+- `supabase/01_estrutura.sql`, `02_envios_contabilidade.sql` e `03_conciliacao_bancaria.sql` e `04_subcontas.sql`, `05_documentos.sql`: tabelas e regras de acesso (rodar uma vez, nessa ordem)
 
 ## Configurar o Supabase (uma vez, feito pela Laysla)
 

@@ -7,7 +7,7 @@
 <title>Envios à Contabilidade · Financeiro Alliance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
-<link rel="stylesheet" href="assets/estilo.css?v=20260929f">
+<link rel="stylesheet" href="assets/estilo.css?v=20260929g">
 <style>
 .inp{background:var(--field);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 7px;font:13px var(--f-body);width:100%;min-width:0}
 .inp:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
@@ -87,9 +87,9 @@ tr.linha.ok td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/config.js?v=20260929f"></script>
-<script src="assets/sessao.js?v=20260929f"></script>
-<script src="assets/layout.js?v=20260929f"></script>
+<script src="assets/config.js?v=20260929g"></script>
+<script src="assets/sessao.js?v=20260929g"></script>
+<script src="assets/layout.js?v=20260929g"></script>
 <script>
 (async function(){
 "use strict";
@@ -98,7 +98,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const fmt = c => (c<0?"-":"") + "R$ " + (Math.abs(c)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN = c => c==null||c==="" ? "" : (c/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const br = iso => iso ? iso.split("-").reverse().join("/") : "";
-const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
 const cents = v => { if(v==null||v==="") return null; if(typeof v==="number") return Math.round(v*100);
   const t=String(v).replace(/[^\d,.-]/g,""); if(!t) return null;
   const n = t.includes(",") ? Number(t.replace(/\./g,"").replace(",",".")) : Number(t); return isFinite(n)?Math.round(n*100):null; };
@@ -143,7 +143,7 @@ function favorecido(desc){
 const chaveFav = desc => norm(favorecido(desc)).split(" ").slice(0,3).join(" ");
 
 /* ---------- estado ---------- */
-const E = { competencia:"", linhas:[], aplicacoes:[], extrato:null, status:"rascunho", salvo:null, sujo:false, filtro:"todas", planilha:null, erroExtrato:null, erroPlanilha:null, memoria:{} };
+const E = { competencia:"", linhas:[], aplicacoes:[], extrato:null, status:"rascunho", salvo:null, sujo:false, filtro:"todas", planilha:null, erroExtrato:null, erroPlanilha:null, memoria:{}, anexos:[] };
 const H = { sb:null, sessao:null, perfil:null };
 const podeEditar = () => ["admin","lanca"].includes(H.perfil?.papel);
 const APLIC_PADRAO = () => [{nome:"Vermont",saldo_ini:null,aplicacoes:null,resgates:null,rendimento:null,ir:null,saldo_fim:null},{nome:"Santander ContaMax",saldo_ini:null,aplicacoes:null,resgates:null,rendimento:null,ir:null,saldo_fim:null}];
@@ -298,8 +298,30 @@ function renderSlots(){
     return `<div class="slot"><div class="top"><span class="name">${nome}</span>${pill}</div>${body}</div>`; };
   $("#slots").innerHTML =
     slot("Extrato Santander", ex, E.erroExtrato, ex?`${E.linhas.length} movimentos · ${esc(ex.conta||"")}<br><span class="muted small">Saldo ${fmt(ex.saldoIni??0)} → ${fmt(ex.saldoFim??0)}</span>`:"", "PDF ou OFX do mês") +
-    slot("Planilha de pagamentos", pl, E.erroPlanilha, pl?`${pl.itens.length} pagamentos · ${pl.itens.filter(i=>i.casou).length} casados com o extrato`:"", "Opcional: modelo Envio_Contabilidade (.xlsx)");
+    slot("Planilha de pagamentos", pl, E.erroPlanilha, pl?`${pl.itens.length} pagamentos · ${pl.itens.filter(i=>i.casou).length} casados com o extrato`:"", "Opcional: modelo Envio_Contabilidade (.xlsx)") +
+    `<div class="slot"><div class="top"><span class="name">Vão junto no e-mail</span>${E.anexos.length?`<span class="pill ok">${E.anexos.length}</span>`:'<span class="pill idle">Nenhum</span>'}</div>
+      <div class="file">Extratos e relatórios do mês (Santander, Vermont, ContaMax). Outros PDFs soltos aqui entram como anexo.</div>
+      ${E.anexos.map(a=>`<div class="facts" style="display:flex;gap:6px;align-items:center;justify-content:space-between"><span style="overflow-wrap:anywhere">${esc(a.nome)}</span>${podeEditar()?`<button type="button" data-remover="${esc(a.caminho)}" title="Tirar do e-mail" aria-label="Tirar ${esc(a.nome)} do e-mail" style="font-size:12px;padding:1px 8px">×</button>`:""}</div>`).join("")}</div>`;
+  document.querySelectorAll("[data-remover]").forEach(b=>b.addEventListener("click",()=>removerAnexo(b.dataset.remover)));
 }
+/* ---------- arquivos que vão junto no e-mail (pasta privada no Supabase) ---------- */
+const pastaMes = () => `alliance/contabilidade/${E.competencia}`;
+const nomeSeguro = n => n.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w.\- @]+/g,"_");
+async function listarAnexos(){
+  if(!E.competencia) return;
+  const { data } = await H.sb.storage.from("documentos").list(pastaMes(), { limit:100 });
+  E.anexos = (data||[]).filter(o=>o.name && o.id).map(o=>({ nome:o.name, caminho:`${pastaMes()}/${o.name}` }));
+}
+async function guardarArquivo(file, extrato){
+  if(!podeEditar()) return;
+  if(extrato){ const velhos=E.anexos.filter(a=>a.nome.startsWith("Extrato Santander - ")).map(a=>a.caminho); if(velhos.length) await H.sb.storage.from("documentos").remove(velhos); }
+  const nome = (extrato ? "Extrato Santander - " : "") + nomeSeguro(file.name);
+  const { error } = await H.sb.storage.from("documentos").upload(`${pastaMes()}/${nome}`, file, { upsert:true, contentType:file.type||"application/octet-stream" });
+  if(error) toast(`Não consegui guardar ${file.name} para o e-mail.`);
+  else if(!extrato){ const m=file.name.match(/(?:^|\D)(0[1-9]|1[0-2])[_.\-\/ ](20\d{2})(?:\D|$)/); if(m && `${m[2]}-${m[1]}`!==E.competencia) toast(`Atenção: ${file.name} parece ser de ${m[1]}/${m[2]} e foi anexado a ${mesNome(E.competencia)}. Se estiver errado, tire do e-mail no quadro "Vão junto no e-mail".`); }
+  await listarAnexos();
+}
+async function removerAnexo(caminho){ await H.sb.storage.from("documentos").remove([caminho]); await listarAnexos(); renderSlots(); toast("Arquivo tirado do e-mail"); }
 function renderResumo(){
   const L=E.linhas, sai=L.filter(l=>l.valor<0), ent=L.filter(l=>l.valor>0);
   const sit=L.map(situacao), falta=sit.filter(s=>s==="falta").length, nfp=L.filter(l=>l.nf_pendente).length;
@@ -367,7 +389,7 @@ function renderAcoes(r){
   const pode=podeEditar();
   const bloq = r.bloqueia ? ' disabled title="Resolva as pendências antes"' : "";
   if(pode && envio.confirmando){
-    $("#acoes").innerHTML = `<span class="small">Enviar a planilha de <b>${esc(mesNome(E.competencia))}</b> para os dois e-mails da contabilidade, com cópia para a Laysla?</span>
+    $("#acoes").innerHTML = `<span class="small">Enviar a planilha de <b>${esc(mesNome(E.competencia))}</b> para os dois e-mails da contabilidade, com cópia para a Laysla${E.anexos.length?`, com ${E.anexos.length} anexo${E.anexos.length>1?"s":""}`:""}?</span>
       <button type="button" id="btnConfirma" class="primary"${envio.ocupado?" disabled":""}>${envio.ocupado?"Enviando…":"Confirmar envio"}</button><button type="button" id="btnCancela"${envio.ocupado?" disabled":""}>Cancelar</button>`;
     $("#btnConfirma").addEventListener("click",()=>enviarContabilidade(false));
     $("#btnCancela").addEventListener("click",()=>{ envio.confirmando=false; renderAcoes(r); });
@@ -425,11 +447,16 @@ $("#aplicacoes").addEventListener("change", e=>{ const el=e.target; if(el.datase
 
 /* ---------- arquivos ---------- */
 async function ingerir(files){
-  for(const f of files){
+  const anexosSoltos=[];
+  // extratos primeiro (definem o mês); planilhas depois; o resto vira anexo
+  const ordem=f=>{ const e=(f.name.split(".").pop()||"").toLowerCase(); return e==="ofx"?0:e==="pdf"?1:2; };
+  for(const f of [...files].sort((a,b)=>ordem(a)-ordem(b))){
     const ext=(f.name.split(".").pop()||"").toLowerCase();
     try{
       if(ext==="pdf"||ext==="ofx"){
-        const ex = ext==="pdf" ? await lerPdf(await f.arrayBuffer(), f.name) : lerOfx(new TextDecoder("latin1").decode(await f.arrayBuffer()), f.name);
+        let ex;
+        try{ ex = ext==="pdf" ? await lerPdf(await f.arrayBuffer(), f.name) : lerOfx(new TextDecoder("latin1").decode(await f.arrayBuffer()), f.name); }
+        catch(e){ if(ext==="pdf" && /Não encontrei movimentos/.test(e.message)){ anexosSoltos.push(f); continue; } throw e; }
         Object.assign(ex, conferirSaldos(ex));
         const meses={}; ex.recs.forEach(r=>meses[r.data.slice(0,7)]=(meses[r.data.slice(0,7)]||0)+1);
         const mes=Object.entries(meses).sort((a,b)=>b[1]-a[1])[0][0];
@@ -437,11 +464,16 @@ async function ingerir(files){
         E.extrato={arquivo:ex.arquivo, conta:ex.conta, saldoIni:ex.saldoIni, saldoFim:ex.saldoFim, cadeia:ex.cadeia};
         E.linhas=linhasDoExtrato(ex); E.erroExtrato=null; E.sujo=true;
         if(E.planilha) aplicarPlanilha();
+        await guardarArquivo(f, true);
       } else if(ext==="xlsx"||ext==="xls"){
         E.planilha=lerPlanilha(await f.arrayBuffer(), f.name); E.erroPlanilha=null;
         if(E.linhas.length){ const n=aplicarPlanilha(); E.sujo=true; toast(`${n} pagamentos da planilha preenchidos no extrato`); }
       } else throw new Error("Formato não reconhecido. Use PDF ou OFX do extrato, ou a planilha .xlsx.");
     }catch(err){ const o={name:f.name,msg:err.message||String(err)}; if(ext==="xlsx"||ext==="xls") E.erroPlanilha=o; else E.erroExtrato=o; }
+  }
+  if(anexosSoltos.length){
+    if(!E.competencia) toast("Escolha o mês antes de anexar.");
+    else { for(const f of anexosSoltos) await guardarArquivo(f, false); toast(`${anexosSoltos.length} arquivo${anexosSoltos.length>1?"s":""} vai${anexosSoltos.length>1?"ão":""} junto no e-mail de ${mesNome(E.competencia)}`); }
   }
   render();
 }
@@ -469,6 +501,7 @@ async function trocarMes(mes, manterArquivos){
   if(data){
     E.linhas=data.linhas||[]; E.linhas.forEach(sugerirLiquido); E.aplicacoes=(data.aplicacoes&&data.aplicacoes.length)?data.aplicacoes:APLIC_PADRAO(); E.extrato=data.extrato; E.status=data.status; E.salvo=data;
   }
+  await listarAnexos();
   render();
 }
 let confirmarTroca=false;
@@ -531,7 +564,10 @@ async function enviarContabilidade(teste){
   envio.ocupado=true; render();
   try{
     if(E.sujo && !teste) await salvar(false);
-    const { buf } = montarPlanilha();
+    const { buf, nome } = montarPlanilha();
+    const tipoArq = n => /\.pdf$/i.test(n)?"application/pdf":/\.ofx$/i.test(n)?"application/x-ofx":/\.xlsx$/i.test(n)?"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"application/octet-stream";
+    const arquivos = [{ nome, mime:tipoArq(nome), b64:paraBase64(buf) }];
+    for(const a of E.anexos){ const { data:blob, error } = await H.sb.storage.from("documentos").download(a.caminho); if(error||!blob){ toast(`Não consegui ler ${a.nome}. Tire do e-mail ou solte de novo.`); return; } arquivos.push({ nome:a.nome, mime:tipoArq(a.nome), b64:paraBase64(await blob.arrayBuffer()) }); }
     const { data:{ session } } = await H.sb.auth.getSession();
     const L=E.linhas, soma=a=>a.reduce((x,l)=>x+l.valor,0);
     const resumo = { movimentos:L.length, saidas:soma(L.filter(l=>l.valor<0)), entradas:soma(L.filter(l=>l.valor>0)),
@@ -539,7 +575,7 @@ async function enviarContabilidade(teste){
       nfs_a_emitir: L.filter(l=>l.nf_pendente).map(l=>`${br(l.data)} · ${l.fornecedor} · ${fmt(-l.valor)}`) };
     // texto simples: o navegador não faz a checagem prévia de CORS; o n8n converte de volta
     const resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=UTF-8" },
-      body: JSON.stringify({ token:session?.access_token, competencia:E.competencia, teste, arquivo_base64:paraBase64(buf), resumo }) });
+      body: JSON.stringify({ token:session?.access_token, competencia:E.competencia, teste, arquivos, resumo:{ ...resumo, anexos:E.anexos.map(a=>a.nome) } }) });
     let r={}; try{ r=await resp.json(); }catch(e){}
     if(!resp.ok || !r.ok){ toast(r.motivo || "O envio falhou. Tente de novo em alguns minutos ou avise a Laysla."); return; }
     if(teste) toast("E-mail de teste enviado para a sua caixa. Confira antes do envio oficial.");
